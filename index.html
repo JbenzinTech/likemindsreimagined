@@ -1,0 +1,2940 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Like Minds Reimagined</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:14px;background:#f4f4f2;color:#1a1a18;min-height:100vh;display:flex;flex-direction:column}
+.hero{background:linear-gradient(135deg,#1a1a18 0%,#2e2b22 60%,#3a3020 100%);color:#fff;text-align:center;padding:28px 20px 22px;flex-shrink:0}
+.hero-title{font-size:26px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;line-height:1.15}
+.hero-sub{font-size:12px;letter-spacing:.22em;color:#c9b97a;margin-top:6px;font-weight:400}
+.app-body{display:flex;flex:1;min-height:0}
+.sidebar{width:180px;flex-shrink:0;background:#1a1a18;display:flex;flex-direction:column;padding:12px 0;overflow-y:auto}
+.sidebar-label{font-size:10px;font-weight:600;color:rgba(255,255,255,.3);letter-spacing:.1em;text-transform:uppercase;padding:10px 16px 4px}
+.tab-btn{display:flex;align-items:center;gap:9px;width:100%;padding:10px 16px;font-size:13px;font-weight:500;border:none;background:transparent;cursor:pointer;white-space:nowrap;color:rgba(255,255,255,.55);font-family:inherit;text-align:left;border-left:3px solid transparent;transition:background .15s,color .15s}
+.tab-btn .tab-icon{font-size:15px;width:18px;text-align:center;flex-shrink:0}
+.tab-btn.active{background:rgba(255,255,255,.1);color:#fff;border-left-color:#c9b97a}
+.tab-btn:hover:not(.active){background:rgba(255,255,255,.06);color:rgba(255,255,255,.8)}
+.sub-btn{padding-left:32px;font-size:12px;color:rgba(255,255,255,.45)}
+.sub-btn.active{background:rgba(255,255,255,.08);color:#c9b97a;border-left-color:#c9b97a}
+.sub-btn:hover:not(.active){background:rgba(255,255,255,.04);color:rgba(255,255,255,.7)}
+.tab-arrow{opacity:.5}
+.main-content{flex:1;min-width:0;overflow-y:auto;display:flex;flex-direction:column}
+.topbar{background:#fff;border-bottom:0.5px solid #dddbd0;padding:10px 20px;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;flex-shrink:0}
+.topbar-title{font-size:14px;font-weight:600;color:#1a1a18}
+.topbar-sub{font-size:12px;color:#888780;margin-left:8px}
+.content-area{flex:1;padding:16px;max-width:960px;width:100%}
+.panel{display:none;width:100%}
+.panel.active{display:block}
+.save-bar{background:#fff;border-top:0.5px solid #dddbd0;padding:7px 16px;display:flex;align-items:center;gap:8px;font-size:12px;color:#888780;flex-shrink:0}
+.save-dot{width:7px;height:7px;border-radius:50%;background:#639922;flex-shrink:0}
+.container{width:100%}
+.card{background:#fff;border:0.5px solid #d3d1c7;border-radius:12px;padding:14px;margin-bottom:12px}
+.card-title{font-size:11px;font-weight:600;color:#888780;text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px}
+.row{display:flex;gap:10px;margin-bottom:10px;align-items:flex-end;flex-wrap:wrap}
+label{font-size:12px;color:#5f5e5a;display:block;margin-bottom:3px}
+input,select{width:100%;border:0.5px solid #b4b2a9;border-radius:8px;padding:7px 10px;font-size:13px;font-family:inherit;background:#fff;color:#1a1a18}
+input:focus,select:focus{outline:none;border-color:#378add;box-shadow:0 0 0 2px rgba(55,138,221,.15)}
+.input-formatted{background:#f4f4f2;font-weight:500}
+input:disabled,select:disabled{background:#f4f4f2;color:#5f5e5a;cursor:default;border-color:#d3d1c7}
+.f1{flex:1;min-width:100px}.f15{flex:1.5;min-width:120px}
+button{border:0.5px solid #b4b2a9;border-radius:8px;background:#fff;color:#1a1a18;padding:7px 14px;font-size:13px;font-family:inherit;cursor:pointer;white-space:nowrap}
+button:hover{background:#f4f4f2}
+.btn-primary{background:#1a1a18;color:#fff;border-color:#1a1a18}.btn-primary:hover{background:#2c2c2a}
+.btn-danger{color:#a32d2d;border-color:#f09595;background:#fff}.btn-danger:hover{background:#fcebeb}
+.btn-pdf{background:#eeedfe;color:#3c3489;border-color:#afa9ec}
+.btn-amber{background:#faeeda;color:#633806;border-color:#e8c97a}
+table{width:100%;border-collapse:collapse;font-size:13px;table-layout:fixed}
+th{text-align:left;font-weight:600;font-size:11px;color:#5f5e5a;padding:6px;border-bottom:0.5px solid #d3d1c7;text-transform:uppercase;letter-spacing:.04em}
+td{padding:7px 6px;border-bottom:0.5px solid #d3d1c7;vertical-align:middle;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+tr:last-child td{border-bottom:none}
+.tfoot-row td{border-top:1px solid #b4b2a9;border-bottom:none;font-weight:600;background:#f4f4f2}
+.num{text-align:right;font-variant-numeric:tabular-nums}
+.metric{background:#f4f4f2;border-radius:8px;padding:12px;flex:1;min-width:110px}
+.metric-label{font-size:11px;color:#5f5e5a;margin-bottom:3px}
+.metric-val{font-size:17px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.metric-sub{font-size:11px;color:#888780;margin-top:2px}
+.metrics{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.tag{display:inline-block;font-size:11px;padding:2px 7px;border-radius:6px;font-weight:600}
+.tag-blue{background:#e6f1fb;color:#0c447c}.tag-purple{background:#eeedfe;color:#3c3489}
+.tag-amber{background:#faeeda;color:#633806}.tag-green{background:#eaf3de;color:#27500a}
+.tag-red{background:#fcebeb;color:#791f1f}
+.empty{text-align:center;color:#b4b2a9;padding:20px;font-size:13px}
+.avatar{width:40px;height:40px;border-radius:50%;background:#e6f1fb;display:flex;align-items:center;justify-content:center;font-weight:600;font-size:13px;color:#0c447c;flex-shrink:0}
+.member-header{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.m-pill{padding:6px 12px;border-radius:20px;font-size:12px;font-weight:500;cursor:pointer;border:0.5px solid #b4b2a9;background:#fff;color:#5f5e5a;font-family:inherit}
+.m-pill.sel{background:#1a1a18;color:#fff;border-color:#1a1a18}
+.hint{font-size:12px;color:#888780;margin-top:6px}
+.chart-wrap{position:relative;height:220px;margin-top:8px}
+.round-row{cursor:pointer}.round-row:hover td{background:#fffbf0}.round-row.sel-round td{background:#faeeda}
+.kyc-notice{font-size:12px;color:#5f5e5a;line-height:1.7;background:#fdf6e3;border:0.5px solid #f0d98a;border-radius:8px;padding:10px 13px;margin-bottom:12px}
+.kyc-badge{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;padding:3px 9px;border-radius:12px;margin-bottom:8px}
+.kyc-badge-ok{background:#eaf3de;color:#27500a}.kyc-badge-missing{background:#fcebeb;color:#791f1f}
+.field-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
+.field-row.three{grid-template-columns:1fr 1fr 1fr}
+.field-row.single{grid-template-columns:1fr}
+/* ── lock-in warning banner ── */
+.lockin-banner{background:#fff8e6;border:1px solid #e8c97a;border-radius:10px;padding:12px 14px;margin-bottom:12px;display:flex;align-items:flex-start;gap:10px}
+.lockin-banner-icon{font-size:18px;flex-shrink:0;margin-top:1px}
+.lockin-banner-text{font-size:12px;color:#633806;line-height:1.7}
+.lockin-banner-text strong{font-weight:700}
+/* ── timeline widget ── */
+.timeline-wrap{display:flex;align-items:center;gap:0;margin:10px 0 4px;overflow-x:auto;padding-bottom:4px}
+.tl-node{display:flex;flex-direction:column;align-items:center;flex-shrink:0;min-width:90px}
+.tl-dot{width:14px;height:14px;border-radius:50%;border:2px solid #d3d1c7;background:#fff;z-index:1;flex-shrink:0}
+.tl-dot.done{background:#c9b97a;border-color:#c9b97a}
+.tl-dot.now{background:#378add;border-color:#378add;box-shadow:0 0 0 3px rgba(55,138,221,.2)}
+.tl-dot.locked{background:#f4f4f2;border-color:#d3d1c7}
+.tl-line{flex:1;height:2px;background:#d3d1c7;min-width:32px;flex-shrink:0}
+.tl-line.done{background:#c9b97a}
+.tl-label{font-size:10px;color:#888780;margin-top:5px;text-align:center;white-space:nowrap;font-weight:500}
+.tl-label.done{color:#7a6e2e}.tl-label.now{color:#1a5fa0;font-weight:700}
+.tl-sub{font-size:9px;color:#b4b2a9;margin-top:1px;text-align:center}
+/* ── storage meter ── */
+.storage-meter{height:6px;background:#e8e6df;border-radius:3px;overflow:hidden;margin:6px 0}
+.storage-meter-fill{height:100%;border-radius:3px;background:#639922;transition:width .3s}
+.storage-meter-fill.warn{background:#ef9f27}
+.storage-meter-fill.danger{background:#a32d2d}
+/* ── audit log ── */
+.audit-row td{font-size:11px}
+/* ── income badge ── */
+.income-type-badge{font-size:10px;padding:2px 6px;border-radius:5px;font-weight:600}
+/* ── sync / auth UI ── */
+.sync-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;transition:background .3s}
+.sync-dot.synced{background:#639922}
+.sync-dot.syncing{background:#ef9f27;animation:pulse .8s infinite alternate}
+.sync-dot.error{background:#a32d2d}
+.sync-dot.offline{background:#b4b2a9}
+@keyframes pulse{from{opacity:1}to{opacity:.3}}
+/* auth overlay */
+.auth-overlay{position:fixed;inset:0;background:linear-gradient(135deg,#1a1a18 0%,#2e2b22 60%,#3a3020 100%);display:flex;align-items:center;justify-content:center;z-index:9999}
+.auth-box{background:#fff;border-radius:16px;padding:32px 28px;width:340px;max-width:92vw;box-shadow:0 8px 40px rgba(0,0,0,.35)}
+.auth-logo{text-align:center;margin-bottom:20px}
+.auth-logo-title{font-size:18px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#1a1a18}
+.auth-logo-sub{font-size:11px;letter-spacing:.18em;color:#c9b97a;margin-top:3px}
+.auth-title{font-size:15px;font-weight:600;color:#1a1a18;margin-bottom:4px}
+.auth-sub{font-size:12px;color:#888780;margin-bottom:18px}
+.auth-field{margin-bottom:12px}
+.auth-field label{font-size:12px;color:#5f5e5a;display:block;margin-bottom:4px;font-weight:500}
+.auth-field input{width:100%;border:0.5px solid #b4b2a9;border-radius:8px;padding:9px 12px;font-size:13px;font-family:inherit;background:#fff;color:#1a1a18}
+.auth-field input:focus{outline:none;border-color:#378add;box-shadow:0 0 0 2px rgba(55,138,221,.15)}
+.auth-btn{width:100%;background:#1a1a18;color:#fff;border:none;border-radius:8px;padding:10px;font-size:13px;font-family:inherit;cursor:pointer;font-weight:600;margin-top:4px}
+.auth-btn:hover{background:#2c2c2a}
+.auth-btn.secondary{background:#fff;color:#1a1a18;border:0.5px solid #b4b2a9;margin-top:8px}
+.auth-btn.secondary:hover{background:#f4f4f2}
+.auth-msg{font-size:12px;text-align:center;margin-top:10px;min-height:18px}
+.auth-msg.err{color:#a32d2d}.auth-msg.ok{color:#27500a}
+.auth-role-badge{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;padding:3px 9px;border-radius:12px}
+.role-admin{background:#faeeda;color:#633806}
+.role-member{background:#e6f1fb;color:#0c447c}
+/* realtime flash */
+@keyframes flashgreen{0%{background:#eaf3de}100%{background:transparent}}
+.rt-flash{animation:flashgreen 1.2s ease-out}
+@media(max-width:640px){
+  .sidebar{width:52px}.tab-btn span.tab-label{display:none}
+  .tab-btn{padding:12px;justify-content:center;border-left:none;border-bottom:3px solid transparent}
+  .tab-btn.active{border-bottom-color:#c9b97a;border-left:none}
+  .sidebar-label{display:none}
+  .hero-title{font-size:20px}
+}
+@media(max-width:580px){.field-row,.field-row.three{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+
+<!-- ── Auth overlay (shown until signed in) ── -->
+<div class="auth-overlay" id="auth-overlay">
+  <div class="auth-box">
+    <div class="auth-logo">
+      <div class="auth-logo-title">Like Minds Reimagined</div>
+      <div class="auth-logo-sub">— Let's Build Wealth Together —</div>
+    </div>
+    <div id="auth-signin-view">
+      <div class="auth-title">Sign in to your account</div>
+      <div class="auth-sub">Use the email your fund administrator registered for you.</div>
+      <div class="auth-field"><label>Email address</label><input id="auth-email" type="email" placeholder="you@example.com" autocomplete="email"/></div>
+      <div class="auth-field"><label>Password</label><input id="auth-password" type="password" placeholder="••••••••" autocomplete="current-password"/></div>
+      <button class="auth-btn" onclick="signIn()">Sign in</button>
+      <button class="auth-btn secondary" onclick="showForgot()">Forgot password?</button>
+      <div class="auth-msg" id="auth-signin-msg"></div>
+    </div>
+    <div id="auth-forgot-view" style="display:none">
+      <div class="auth-title">Reset your password</div>
+      <div class="auth-sub">We'll send a reset link to your email.</div>
+      <div class="auth-field"><label>Email address</label><input id="auth-forgot-email" type="email" placeholder="you@example.com"/></div>
+      <button class="auth-btn" onclick="sendReset()">Send reset link</button>
+      <button class="auth-btn secondary" onclick="showSignIn()">Back to sign in</button>
+      <div class="auth-msg" id="auth-forgot-msg"></div>
+    </div>
+  </div>
+</div>
+
+<div class="hero">
+  <div class="hero-title">Like Minds Reimagined</div>
+  <div class="hero-sub">— Let's Build Wealth Together —</div>
+</div>
+
+<div class="app-body">
+  <nav class="sidebar">
+    <button class="tab-btn" id="nav-overview" onclick="toggleOverviewMenu(this)">
+      <span class="tab-icon">&#128202;</span><span class="tab-label">Overview</span>
+      <span class="tab-arrow" id="overview-arrow" style="margin-left:auto;font-size:10px;transition:transform .2s">&#9660;</span>
+    </button>
+    <div id="overview-submenu" style="display:none">
+      <button class="tab-btn sub-btn" id="nav-ov-fund" onclick="switchOverviewTab('ov-fund',this)">
+        <span class="tab-icon" style="font-size:12px">&#128200;</span><span class="tab-label">Fund Summary</span>
+      </button>
+      <button class="tab-btn sub-btn" id="nav-ov-members" onclick="switchOverviewTab('ov-members',this)">
+        <span class="tab-icon" style="font-size:12px">&#128101;</span><span class="tab-label">Member Units</span>
+      </button>
+    </div>
+    <button class="tab-btn" id="nav-contributions" onclick="toggleContributionsMenu(this)">
+      <span class="tab-icon">&#128178;</span><span class="tab-label">Contributions</span>
+      <span class="tab-arrow" id="contributions-arrow" style="margin-left:auto;font-size:10px;transition:transform .2s">&#9660;</span>
+    </button>
+    <div id="contributions-submenu" style="display:none">
+      <button class="tab-btn sub-btn" id="nav-deposits" onclick="switchTab('deposits',this)">
+        <span class="tab-icon" style="font-size:12px">&#128229;</span><span class="tab-label">Deposits</span>
+      </button>
+      <button class="tab-btn sub-btn" id="nav-withdrawals" onclick="switchTab('withdrawals',this)">
+        <span class="tab-icon" style="font-size:12px">&#128228;</span><span class="tab-label">Withdrawals</span>
+      </button>
+      <button class="tab-btn sub-btn" id="nav-ownership" onclick="switchTab('ownership',this)">
+        <span class="tab-icon" style="font-size:12px">&#128204;</span><span class="tab-label">Ownership</span>
+      </button>
+    </div>
+    <button class="tab-btn" id="nav-portfolio" onclick="togglePortfolioMenu(this)">
+      <span class="tab-icon">&#128181;</span><span class="tab-label">Portfolio</span>
+      <span class="tab-arrow" id="portfolio-arrow" style="margin-left:auto;font-size:10px;transition:transform .2s">&#9660;</span>
+    </button>
+    <div id="portfolio-submenu" style="display:none">
+      <button class="tab-btn sub-btn" id="nav-profit" onclick="switchTab('profit',this)">
+        <span class="tab-icon" style="font-size:12px">&#129689;</span><span class="tab-label">Profit</span>
+      </button>
+      <button class="tab-btn sub-btn" id="nav-port-register" onclick="switchTab('port-register',this)">
+        <span class="tab-icon" style="font-size:12px">&#128203;</span><span class="tab-label">Register</span>
+      </button>
+      <button class="tab-btn sub-btn" id="nav-port-purchases" onclick="switchTab('port-purchases',this)">
+        <span class="tab-icon" style="font-size:12px">&#128722;</span><span class="tab-label">Purchases</span>
+      </button>
+      <button class="tab-btn sub-btn" id="nav-port-sales" onclick="switchTab('port-sales',this)">
+        <span class="tab-icon" style="font-size:12px">&#128200;</span><span class="tab-label">Sales</span>
+      </button>
+      <button class="tab-btn sub-btn" id="nav-port-income" onclick="switchTab('port-income',this)">
+        <span class="tab-icon" style="font-size:12px">&#128176;</span><span class="tab-label">Income</span>
+      </button>
+    </div>
+    <button class="tab-btn" id="nav-members" onclick="toggleMembersMenu(this)">
+      <span class="tab-icon">&#128101;</span><span class="tab-label">Members</span>
+      <span class="tab-arrow" id="members-arrow" style="margin-left:auto;font-size:10px;transition:transform .2s">&#9660;</span>
+    </button>
+    <div id="members-submenu" style="display:none">
+      <button class="tab-btn sub-btn" id="nav-members-list" onclick="switchTab('members',this)">
+        <span class="tab-icon" style="font-size:12px">&#128101;</span><span class="tab-label">Member list</span>
+      </button>
+      <button class="tab-btn sub-btn" id="nav-membership" onclick="switchTab('membership',this)">
+        <span class="tab-icon" style="font-size:12px">&#128100;</span><span class="tab-label">Membership</span>
+      </button>
+    </div>
+    <button class="tab-btn" id="nav-settings" onclick="toggleSettingsMenu(this)">
+      <span class="tab-icon">&#9881;</span><span class="tab-label">Settings</span>
+      <span class="tab-arrow" id="settings-arrow" style="margin-left:auto;font-size:10px;transition:transform .2s">&#9660;</span>
+    </button>
+    <div id="settings-submenu" style="display:none">
+      <button class="tab-btn sub-btn" id="nav-fund-identity" onclick="switchSettingsTab('fund-identity',this)">
+        <span class="tab-icon" style="font-size:12px">&#127981;</span><span class="tab-label">Fund Identity</span>
+      </button>
+      <button class="tab-btn sub-btn" id="nav-brokers" onclick="switchSettingsTab('brokers',this)">
+        <span class="tab-icon" style="font-size:12px">&#127968;</span><span class="tab-label">Brokers</span>
+      </button>
+      <button class="tab-btn sub-btn" id="nav-asset-types" onclick="switchSettingsTab('asset-types',this)">
+        <span class="tab-icon" style="font-size:12px">&#128200;</span><span class="tab-label">Asset Types</span>
+      </button>
+      <button class="tab-btn sub-btn" id="nav-data-storage" onclick="switchSettingsTab('data-storage',this)">
+        <span class="tab-icon" style="font-size:12px">&#128190;</span><span class="tab-label">Data Storage</span>
+      </button>
+      <button class="tab-btn sub-btn" id="nav-audit-log" onclick="switchSettingsTab('audit-log',this)">
+        <span class="tab-icon" style="font-size:12px">&#128221;</span><span class="tab-label">Audit Log</span>
+      </button>
+      <button class="tab-btn sub-btn" id="nav-kyc" onclick="switchTab('kyc',this)">
+        <span class="tab-icon" style="font-size:12px">&#128274;</span><span class="tab-label">KYC</span>
+      </button>
+    </div>
+  </nav>
+
+  <div class="main-content">
+    <div class="topbar">
+      <div>
+        <span class="topbar-title" id="topbar-section">Overview</span>
+        <span class="topbar-sub" id="fund-name-header">Investment Manager</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <div id="topbar-lockin-badge" style="display:none"></div>
+        <div id="topbar-user-info" style="display:none;align-items:center;gap:8px">
+          <span id="topbar-user-role-badge" class="auth-role-badge"></span>
+          <span id="topbar-user-email" style="font-size:11px;color:#888780"></span>
+          <button onclick="signOut()" style="font-size:11px;padding:3px 9px;color:#5f5e5a">Sign out</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="content-area">
+
+<!-- SETTINGS -->
+<div id="panel-settings" class="panel">
+  <div id="settings-fund-identity" class="settings-sub" style="display:none">
+    <div class="card">
+      <div class="card-title">Fund identity</div>
+      <div class="row">
+        <div class="f15"><label>Fund name</label><input id="fund-name" type="text" value="Investment Manager" oninput="saveSettings()"/></div>
+        <div class="f1"><label>Currency</label>
+          <select id="currency" onchange="saveSettings();renderAll()">
+            <option value="&#8358;">NGN (&#8358;)</option>
+            <option value="$">USD ($)</option>
+            <option value="&#8364;">EUR (&#8364;)</option>
+            <option value="&#163;">GBP (&#163;)</option>
+            <option value="CFA">CFA</option>
+          </select>
+        </div>
+      </div>
+      <div class="row">
+        <div class="f1"><label>Initial unit price (NAV)</label><input id="init-nav" type="number" value="1000" min="1" oninput="saveSettings();updateNavDisplay()"/></div>
+        <div class="f1"><label>Fund start date</label><input id="fund-start" type="date" oninput="saveSettings();renderFundTimeline()"/></div>
+      </div>
+      <div class="row">
+        <div class="f1"><label>Lock-in period (no distributions, years)</label><input id="lockin-years" type="number" value="3" min="0" max="20" oninput="saveSettings()"/></div>
+        <div class="f1"><label>Minimum holding period (years)</label><input id="horizon-years" type="number" value="5" min="0" max="30" oninput="saveSettings()"/></div>
+        <div class="f1"><label>Standard monthly contribution</label>
+          <input id="std-contribution" type="text" placeholder="e.g. 50,000"
+            oninput="stripNonNumeric(this)"
+            onblur="applyFormatting(this,'std-contribution-raw')"
+            onfocus="stripFormatting(this,'std-contribution-raw')"/>
+          <input type="hidden" id="std-contribution-raw"/>
+        </div>
+      </div>
+      <div class="hint">Current NAV per unit: <strong id="nav-display">&#8358;1,000.00</strong></div>
+    </div>
+  </div>
+
+  <div id="settings-brokers" class="settings-sub" style="display:none">
+    <div class="card">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <div class="card-title" id="broker-form-title" style="margin-bottom:0">Add broker</div>
+        <button id="broker-cancel-btn" onclick="cancelBrokerEdit()" style="display:none;font-size:12px;color:#a32d2d;border-color:#f09595">&#10005; Cancel edit</button>
+      </div>
+      <input type="hidden" id="broker-edit-id"/>
+      <div class="row">
+        <div class="f15"><label>Broker name</label><input id="broker-name" type="text" placeholder="e.g. Stanbic IBTC Stockbrokers"/></div>
+        <div class="f1"><label>Broker code</label><input id="broker-code" type="text" placeholder="e.g. SIBTC" style="text-transform:uppercase"/></div>
+        <div class="f15"><label>Note</label><input id="broker-note" type="text" placeholder="Optional note"/></div>
+        <div style="flex:0;display:flex;gap:6px;align-items:flex-end">
+          <button id="broker-add-btn" class="btn-primary" onclick="addBroker()">Add &#8599;</button>
+          <button id="broker-update-btn" class="btn-primary" onclick="saveBrokerEdit()" style="display:none;background:#1d6f42;border-color:#1d6f42">&#10003; Update</button>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">Broker register <span style="font-weight:400;text-transform:none;letter-spacing:0;font-size:11px;color:#888780">&mdash; click a row to edit</span></div>
+      <div id="broker-register-wrap"><div class="empty">No brokers registered yet.</div></div>
+    </div>
+  </div>
+
+  <div id="settings-asset-types" class="settings-sub" style="display:none">
+    <div class="card">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <div class="card-title" id="assettype-form-title" style="margin-bottom:0">Add asset type</div>
+        <button id="assettype-cancel-btn" onclick="cancelAssetTypeEdit()" style="display:none;font-size:12px;color:#a32d2d;border-color:#f09595">&#10005; Cancel edit</button>
+      </div>
+      <input type="hidden" id="assettype-edit-id"/>
+      <div class="row">
+        <div class="f15"><label>Asset name</label><input id="assettype-name" type="text" placeholder="e.g. Stock"/></div>
+        <div class="f1"><label>Asset code</label><input id="assettype-code" type="text" placeholder="e.g. STK" style="text-transform:uppercase"/></div>
+        <div class="f15"><label>Note</label><input id="assettype-note" type="text" placeholder="Optional note"/></div>
+        <div style="flex:0;display:flex;gap:6px;align-items:flex-end">
+          <button id="assettype-add-btn" class="btn-primary" onclick="addAssetType()">Add &#8599;</button>
+          <button id="assettype-update-btn" class="btn-primary" onclick="saveAssetTypeEdit()" style="display:none;background:#1d6f42;border-color:#1d6f42">&#10003; Update</button>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">Asset type register <span style="font-weight:400;text-transform:none;letter-spacing:0;font-size:11px;color:#888780">&mdash; click a row to edit</span></div>
+      <div id="assettype-register-wrap"><div class="empty">No asset types registered yet.</div></div>
+    </div>
+  </div>
+
+  <div id="settings-data-storage" class="settings-sub" style="display:none">
+    <div class="card">
+      <div class="card-title">Cloud sync — Supabase</div>
+      <div style="font-size:13px;color:#5f5e5a;line-height:1.6;margin-bottom:12px">
+        All data is saved in real time to your <strong>Supabase</strong> cloud database and synced across all devices. Changes made by the admin are visible to all signed-in users within seconds.
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;background:#f4f4f2;border-radius:8px;padding:10px 14px;margin-bottom:14px">
+        <div class="sync-dot synced" id="storage-sync-dot"></div>
+        <div>
+          <div style="font-size:12px;font-weight:600;color:#1a1a18" id="storage-sync-label">Connected</div>
+          <div style="font-size:11px;color:#888780" id="storage-last-sync">—</div>
+        </div>
+        <button onclick="forceSyncFromCloud()" style="margin-left:auto;font-size:12px;padding:5px 10px">&#8635; Refresh from cloud</button>
+      </div>
+      <div style="font-size:12px;font-weight:600;color:#5f5e5a;margin-bottom:8px">User management</div>
+      <div style="font-size:12px;color:#5f5e5a;line-height:1.6;margin-bottom:10px">
+        Invite new users via the Supabase dashboard → Authentication → Users → Invite user. Set their role in the <strong>user_roles</strong> table: <code style="background:#f4f4f2;padding:1px 4px;border-radius:3px">admin</code> or <code style="background:#f4f4f2;padding:1px 4px;border-radius:3px">member</code>.
+      </div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px">
+        <button style="background:#eaf3de;color:#27500a;border-color:#c0dd97" onclick="exportJSON()">&#8595; Export backup (.json)</button>
+        <button onclick="toggleImport()">&#8593; Import backup</button>
+        <button class="btn-danger" onclick="clearAllData()">&#128465; Clear all data</button>
+      </div>
+      <div id="import-area" style="display:none">
+        <div style="border:0.5px solid #b5d4f4;background:#e6f1fb;border-radius:10px;padding:14px">
+          <div class="card-title" style="color:#0c447c">Restore from backup</div>
+          <div style="font-size:13px;color:#185fa5;margin-bottom:10px">Select a previously exported .json file. This will <strong>replace</strong> all current data in the cloud.</div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <input type="file" id="bak-file" accept=".json" style="flex:1;min-width:180px"/>
+            <button class="btn-primary" onclick="importJSON()">Restore to cloud</button>
+            <button onclick="toggleImport()">Cancel</button>
+          </div>
+          <div class="hint" id="import-msg"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="settings-audit-log" class="settings-sub" style="display:none">
+    <div class="card">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <div class="card-title" style="margin-bottom:0">Audit log</div>
+        <span style="font-size:11px;color:#888780">All create / edit / delete events are recorded automatically</span>
+      </div>
+      <div id="audit-log-wrap"><div class="empty">No audit events yet.</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- DEPOSITS -->
+<div id="panel-deposits" class="panel">
+  <div class="card">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+      <div class="card-title" id="dep-form-title" style="margin-bottom:0">Record a deposit</div>
+      <button id="dep-cancel-btn" onclick="cancelDepositEdit()" style="display:none;font-size:12px;color:#a32d2d;border-color:#f09595">&#10005; Cancel edit</button>
+    </div>
+    <input type="hidden" id="dep-edit-id"/>
+    <div class="row">
+      <div class="f15">
+        <label>Member name</label>
+        <input id="dep-member" type="text" placeholder="e.g. Amaka" list="member-list"/>
+        <datalist id="member-list"></datalist>
+      </div>
+      <div class="f1">
+        <label>Amount</label>
+        <input id="dep-amount" type="text" placeholder="50,000"
+          oninput="stripNonNumeric(this)"
+          onblur="applyFormatting(this,'dep-amount-raw');checkStdContribution()"
+          onfocus="stripFormatting(this,'dep-amount-raw')"/>
+        <input type="hidden" id="dep-amount-raw"/>
+      </div>
+      <div class="f1"><label>Date</label><input id="dep-date" type="date" oninput="updateDepNavHint()"/></div>
+      <div style="flex:0;display:flex;gap:6px">
+        <button id="dep-add-btn" class="btn-primary" onclick="addDeposit()">Add &#8599;</button>
+        <button id="dep-update-btn" class="btn-primary" onclick="saveDepositEdit()" style="display:none;background:#1d6f42;border-color:#1d6f42">&#10003; Update</button>
+      </div>
+    </div>
+    <div class="hint" id="dep-nav-hint">Units issued = amount &divide; NAV on deposit date. NAV: <strong id="dep-nav-label">&#8358;1,000.00</strong></div>
+    <div id="dep-contribution-warn" style="display:none;font-size:11px;color:#633806;background:#fff8e6;border:0.5px solid #e8c97a;border-radius:6px;padding:5px 9px;margin-top:6px"></div>
+  </div>
+  <div class="card">
+    <div class="card-title">Deposit ledger <span style="font-weight:400;text-transform:none;letter-spacing:0;font-size:11px;color:#888780">&mdash; click a row to edit</span></div>
+    <div id="ledger-wrap"><div class="empty">No deposits yet.</div></div>
+  </div>
+</div>
+
+<!-- WITHDRAWALS -->
+<div id="panel-withdrawals" class="panel">
+  <div class="card">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+      <div class="card-title" id="wdw-form-title" style="margin-bottom:0">Record a withdrawal</div>
+      <button id="wdw-cancel-btn" onclick="cancelWithdrawalEdit()" style="display:none;font-size:12px;color:#a32d2d;border-color:#f09595">&#10005; Cancel edit</button>
+    </div>
+    <input type="hidden" id="wdw-edit-id"/>
+    <div id="wdw-lockin-warn" style="display:none" class="lockin-banner">
+      <div class="lockin-banner-icon">&#9888;</div>
+      <div class="lockin-banner-text" id="wdw-lockin-warn-text"></div>
+    </div>
+    <div class="row">
+      <div class="f15">
+        <label>Member name</label>
+        <input id="wdw-member" type="text" placeholder="e.g. Amaka" list="member-list-wdw"/>
+        <datalist id="member-list-wdw"></datalist>
+      </div>
+      <div class="f1">
+        <label>Amount</label>
+        <input id="wdw-amount" type="text" placeholder="50,000"
+          oninput="stripNonNumeric(this)"
+          onblur="applyFormatting(this,'wdw-amount-raw')"
+          onfocus="stripFormatting(this,'wdw-amount-raw')"/>
+        <input type="hidden" id="wdw-amount-raw"/>
+      </div>
+      <div class="f1"><label>Date</label><input id="wdw-date" type="date" oninput="updateWdwNavHint();checkWithdrawalLockIn()"/></div>
+      <div class="f1"><label>Reason / note</label><input id="wdw-reason" type="text" placeholder="e.g. Medical emergency"/></div>
+      <div style="flex:0;display:flex;gap:6px">
+        <button id="wdw-add-btn" class="btn-primary" style="background:#a32d2d;border-color:#a32d2d" onclick="addWithdrawal()">Add &#8599;</button>
+        <button id="wdw-update-btn" class="btn-primary" onclick="saveWithdrawalEdit()" style="display:none;background:#1d6f42;border-color:#1d6f42">&#10003; Update</button>
+      </div>
+    </div>
+    <div class="hint">Units deducted = amount &divide; NAV on withdrawal date. NAV: <strong id="wdw-nav-label">&#8358;1,000.00</strong></div>
+  </div>
+  <div class="card">
+    <div class="card-title">Withdrawal ledger <span style="font-weight:400;text-transform:none;letter-spacing:0;font-size:11px;color:#888780">&mdash; click a row to edit</span></div>
+    <div id="wdw-ledger-wrap"><div class="empty">No withdrawals yet.</div></div>
+  </div>
+</div>
+
+<!-- OWNERSHIP -->
+<div id="panel-ownership" class="panel">
+  <div class="card">
+    <div class="card-title">Unit ledger <span style="font-weight:400;text-transform:none;letter-spacing:0;font-size:11px;color:#888780">&mdash; click a member to view transactions</span></div>
+    <div id="ownership-summary"><div class="empty">No data yet.</div></div>
+  </div>
+  <div id="ownership-detail"></div>
+</div>
+
+<!-- OVERVIEW -->
+<div id="panel-overview" class="panel">
+  <div id="overview-ov-fund" class="overview-sub">
+    <!-- Fund timeline -->
+    <div class="card" id="fund-timeline-card">
+      <div class="card-title">Fund timeline</div>
+      <div id="fund-timeline-wrap"><div class="empty" style="padding:10px">Set the fund start date in Settings → Fund Identity.</div></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Fund snapshot</div>
+      <div class="metrics">
+        <div class="metric"><div class="metric-label">Net invested</div><div class="metric-val" id="m-total">&#8358;0</div></div>
+        <div class="metric"><div class="metric-label">Net units</div><div class="metric-val" id="m-units">0</div></div>
+        <div class="metric"><div class="metric-label">NAV / unit</div><div class="metric-val" id="m-nav">&#8358;1,000</div></div>
+        <div class="metric"><div class="metric-label">Fund AUM</div><div class="metric-val" id="m-aum">&#8358;0</div><div class="metric-sub">units × current NAV</div></div>
+        <div class="metric"><div class="metric-label">Members</div><div class="metric-val" id="m-members">0</div></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">Profit &amp; returns snapshot</div>
+      <div class="metrics">
+        <div class="metric"><div class="metric-label">Total gross profit</div><div class="metric-val" id="ov-gross">&#8358;0</div></div>
+        <div class="metric"><div class="metric-label">Total expenses</div><div class="metric-val" id="ov-exp">&#8358;0</div></div>
+        <div class="metric"><div class="metric-label">Total net distributed</div><div class="metric-val" id="ov-net" style="color:#3b6d11">&#8358;0</div></div>
+        <div class="metric"><div class="metric-label">Investment income</div><div class="metric-val" id="ov-income">&#8358;0</div></div>
+        <div class="metric"><div class="metric-label">Profit rounds</div><div class="metric-val" id="ov-rounds">0</div></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">Fund performance charts</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+        <div>
+          <div style="font-size:12px;font-weight:500;color:#5f5e5a;margin-bottom:4px">Cumulative investment over time</div>
+          <div class="chart-wrap"><canvas id="chart-cumulative"></canvas></div>
+        </div>
+        <div>
+          <div style="font-size:12px;font-weight:500;color:#5f5e5a;margin-bottom:4px">Member share breakdown</div>
+          <div class="chart-wrap"><canvas id="chart-share"></canvas></div>
+        </div>
+      </div>
+      <div style="margin-top:16px">
+        <div style="font-size:12px;font-weight:500;color:#5f5e5a;margin-bottom:4px">Profit rounds — gross vs net distributed</div>
+        <div class="chart-wrap"><canvas id="chart-profit"></canvas></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="overview-ov-members" class="overview-sub" style="display:none">
+    <div class="card">
+      <div class="card-title">Member unit &amp; value summary <span style="font-size:11px;font-weight:400;text-transform:none;letter-spacing:0;color:#888780">— click a member to expand deposits</span></div>
+      <div id="unit-summary"><div class="empty">No deposits recorded yet.</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- PROFIT -->
+<div id="panel-profit" class="panel">
+  <div id="profit-lockin-banner" style="display:none" class="lockin-banner">
+    <div class="lockin-banner-icon">&#128274;</div>
+    <div class="lockin-banner-text" id="profit-lockin-text"></div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Portfolio valuation &amp; NAV update</div>
+    <div style="font-size:12px;color:#5f5e5a;line-height:1.6;margin-bottom:10px">Record the current market value of the portfolio to update the NAV. New NAV = Portfolio value ÷ Total units outstanding. Deposits recorded on or after this date will use the new NAV.</div>
+    <div class="row">
+      <div class="f1"><label>Valuation date</label><input id="nav-val-date" type="date"/></div>
+      <div class="f1">
+        <label>Total portfolio value</label>
+        <input id="nav-val-portfolio" type="text" placeholder="e.g. 5,000,000"
+          oninput="stripNonNumeric(this)"
+          onblur="applyFormatting(this,'nav-val-portfolio-raw');previewNewNAV()"
+          onfocus="stripFormatting(this,'nav-val-portfolio-raw')"/>
+        <input type="hidden" id="nav-val-portfolio-raw"/>
+      </div>
+      <div class="f1"><label>Notes</label><input id="nav-val-notes" type="text" placeholder="e.g. End of Q1 2025"/></div>
+      <div style="flex:0;align-self:flex-end"><button class="btn-primary" onclick="recordNAVValuation()">Record &#8599;</button></div>
+    </div>
+    <div id="nav-preview" class="hint" style="margin-top:6px"></div>
+  </div>
+
+  <div class="card" id="nav-history-card">
+    <div class="card-title">NAV history</div>
+    <div id="nav-history-wrap"><div class="empty">No valuations recorded yet. Current NAV is the initial unit price from Fund Identity.</div></div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">New profit round</div>
+    <div style="font-size:12px;color:#5f5e5a;margin-bottom:10px">Distribution is proportional to units held. Members who invested more or earlier receive a larger share.</div>
+    <div class="row">
+      <div class="f1"><label>Round label</label><input id="profit-label" type="text" placeholder="e.g. Q1 2025"/></div>
+      <div class="f1"><label>Distribution date</label><input id="profit-date" type="date" oninput="checkProfitLockIn()"/></div>
+      <div class="f1">
+        <label>Source of profit</label>
+        <select id="profit-source">
+          <option value="Realised gain">Realised gain</option>
+          <option value="Dividend income">Dividend income</option>
+          <option value="Interest income">Interest income</option>
+          <option value="Coupon income">Coupon income</option>
+          <option value="Mixed">Mixed</option>
+          <option value="Manual allocation">Manual allocation</option>
+        </select>
+      </div>
+    </div>
+    <div class="row">
+      <div class="f1">
+        <label>Gross profit</label>
+        <input id="profit-gross" type="text" placeholder="200,000"
+          oninput="stripNonNumeric(this)"
+          onblur="applyFormatting(this,'profit-gross-raw')"
+          onfocus="stripFormatting(this,'profit-gross-raw')"/>
+        <input type="hidden" id="profit-gross-raw"/>
+      </div>
+      <div class="f1">
+        <label>Total expenses</label>
+        <input id="profit-expenses" type="text" placeholder="0"
+          oninput="stripNonNumeric(this)"
+          onblur="applyFormatting(this,'profit-expenses-raw')"
+          onfocus="stripFormatting(this,'profit-expenses-raw')"/>
+        <input type="hidden" id="profit-expenses-raw"/>
+      </div>
+      <div style="flex:0;align-self:flex-end"><button class="btn-primary" onclick="calcAndSaveProfit()">Calculate &amp; save &#8599;</button></div>
+    </div>
+    <div class="hint" id="profit-unit-summary-hint"></div>
+  </div>
+
+  <div id="profit-result"><div class="empty">Enter profit details above and click Calculate &amp; save.</div></div>
+  <div class="card" id="profit-history-card" style="display:none">
+    <div class="card-title">Profit history <span style="font-size:11px;font-weight:400;text-transform:none;letter-spacing:0;color:#888780">&mdash; click a row to view its distribution</span></div>
+    <div id="profit-history"></div>
+  </div>
+</div>
+
+<!-- PORTFOLIO REGISTER -->
+<div id="panel-port-register" class="panel">
+  <div class="card">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+      <div class="card-title" id="port-form-title" style="margin-bottom:0">New investment</div>
+      <button id="port-cancel-btn" onclick="cancelPortfolioEdit()" style="display:none;font-size:12px;color:#a32d2d;border-color:#f09595">&#10005; Cancel edit</button>
+    </div>
+    <input type="hidden" id="port-edit-id"/>
+    <div class="row">
+      <div class="f1"><label>Date</label><input id="port-date" type="date"/></div>
+      <div class="f1"><label>Asset type</label>
+        <select id="port-asset-type" onchange="updatePortAssetId()"><option value="">— Select asset type —</option></select>
+      </div>
+      <div class="f1"><label>Asset ID <span style="color:#888780;font-size:11px">(auto)</span></label><input id="port-asset-id" type="text" readonly style="background:#f4f4f2;color:#0c447c;font-weight:600"/></div>
+    </div>
+    <div class="row">
+      <div class="f1"><label>Broker</label>
+        <select id="port-broker" onchange="updatePortAssetId()"><option value="">— Select broker —</option></select>
+      </div>
+      <div class="f1"><label>Note</label><input id="port-description" type="text" placeholder="e.g. Dangote Cement shares"/></div>
+      <div style="flex:0;display:flex;gap:6px;align-items:flex-end">
+        <button id="port-add-btn" class="btn-primary" onclick="addPortfolioItem()">Add &#8599;</button>
+        <button id="port-update-btn" class="btn-primary" onclick="savePortfolioEdit()" style="display:none;background:#1d6f42;border-color:#1d6f42">&#10003; Update</button>
+      </div>
+    </div>
+  </div>
+  <div class="card">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+      <div class="card-title" style="margin-bottom:0">Portfolio register</div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <select id="port-filter-type" onchange="renderPortfolioRegister()" style="width:auto;font-size:12px;padding:5px 8px"><option value="">All asset types</option></select>
+        <input id="port-filter-text" type="text" placeholder="Search..." oninput="renderPortfolioRegister()" style="width:150px;font-size:12px;padding:5px 8px"/>
+      </div>
+    </div>
+    <div id="portfolio-register-wrap"><div class="empty">No investments registered yet.</div></div>
+  </div>
+</div>
+
+<!-- PURCHASES -->
+<div id="panel-port-purchases" class="panel">
+  <div class="card">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+      <div class="card-title" id="purch-form-title" style="margin-bottom:0">Record a purchase</div>
+      <button id="purch-cancel-btn" onclick="cancelPurchaseEdit()" style="display:none;font-size:12px;color:#a32d2d;border-color:#f09595">&#10005; Cancel edit</button>
+    </div>
+    <input type="hidden" id="purch-edit-id"/>
+    <div class="row">
+      <div class="f1"><label>Date</label><input id="purch-date" type="date"/></div>
+      <div class="f1"><label>Asset ID</label>
+        <select id="purch-asset-id" onchange="onPurchAssetChange(this.value)"><option value="">— Select asset —</option></select>
+      </div>
+      <div class="f1"><label>Asset type <span style="color:#888780;font-size:11px">(auto)</span></label><input id="purch-asset-type" type="text" readonly style="background:#f4f4f2;color:#0c447c;font-weight:600"/></div>
+    </div>
+    <div class="row">
+      <div class="f1"><label>Broker <span style="color:#888780;font-size:11px">(auto)</span></label><input id="purch-broker" type="text" readonly style="background:#f4f4f2"/></div>
+      <div class="f1">
+        <label>Amount</label>
+        <input id="purch-amount" type="text" placeholder="0.00"
+          oninput="stripNonNumeric(this)"
+          onblur="applyFormatting(this,'purch-amount-raw')"
+          onfocus="stripFormatting(this,'purch-amount-raw')"/>
+        <input type="hidden" id="purch-amount-raw"/>
+      </div>
+      <div style="flex:0;display:flex;gap:6px;align-items:flex-end">
+        <button id="purch-add-btn" class="btn-primary" onclick="addPurchase()">Add &#8599;</button>
+        <button id="purch-update-btn" class="btn-primary" onclick="savePurchaseEdit()" style="display:none;background:#1d6f42;border-color:#1d6f42">&#10003; Update</button>
+      </div>
+    </div>
+  </div>
+  <div class="card">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+      <div class="card-title" style="margin-bottom:0">Purchase ledger <span style="font-weight:400;text-transform:none;letter-spacing:0;font-size:11px;color:#888780">&mdash; click a row to edit</span></div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <select id="purch-filter-type" onchange="renderPurchaseLedger()" style="width:auto;font-size:12px;padding:5px 8px"><option value="">All asset types</option></select>
+        <input id="purch-filter-text" type="text" placeholder="Search asset ID..." oninput="renderPurchaseLedger()" style="width:150px;font-size:12px;padding:5px 8px"/>
+      </div>
+    </div>
+    <div id="purchase-ledger-wrap"><div class="empty">No purchases recorded yet.</div></div>
+  </div>
+</div>
+
+<!-- SALES (stub) -->
+<div id="panel-port-sales" class="panel">
+  <div class="card"><div class="card-title">Investment sales</div><div class="empty" style="padding:32px">Coming soon — record sales and realised gains/losses.</div></div>
+</div>
+
+<!-- INVESTMENT INCOME (fully implemented) -->
+<div id="panel-port-income" class="panel">
+  <div class="card">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+      <div class="card-title" id="income-form-title" style="margin-bottom:0">Record investment income</div>
+      <button id="income-cancel-btn" onclick="cancelIncomeEdit()" style="display:none;font-size:12px;color:#a32d2d;border-color:#f09595">&#10005; Cancel edit</button>
+    </div>
+    <input type="hidden" id="income-edit-id"/>
+    <div class="row">
+      <div class="f1"><label>Date</label><input id="income-date" type="date"/></div>
+      <div class="f1"><label>Asset ID</label>
+        <select id="income-asset-id"><option value="">— Select asset (optional) —</option></select>
+      </div>
+      <div class="f1"><label>Income type</label>
+        <select id="income-type">
+          <option value="Dividend">Dividend</option>
+          <option value="Interest">Interest</option>
+          <option value="Coupon">Coupon</option>
+          <option value="Rental income">Rental income</option>
+          <option value="Other">Other</option>
+        </select>
+      </div>
+    </div>
+    <div class="row">
+      <div class="f1">
+        <label>Amount</label>
+        <input id="income-amount" type="text" placeholder="0.00"
+          oninput="stripNonNumeric(this)"
+          onblur="applyFormatting(this,'income-amount-raw')"
+          onfocus="stripFormatting(this,'income-amount-raw')"/>
+        <input type="hidden" id="income-amount-raw"/>
+      </div>
+      <div class="f15"><label>Notes</label><input id="income-notes" type="text" placeholder="e.g. Q1 2025 Nestle dividend"/></div>
+      <div style="flex:0;display:flex;gap:6px;align-items:flex-end">
+        <button id="income-add-btn" class="btn-primary" onclick="addIncome()">Add &#8599;</button>
+        <button id="income-update-btn" class="btn-primary" onclick="saveIncomeEdit()" style="display:none;background:#1d6f42;border-color:#1d6f42">&#10003; Update</button>
+      </div>
+    </div>
+    <div class="hint">Income recorded here informs portfolio growth. Use profit rounds to distribute it to members.</div>
+  </div>
+  <div class="card">
+    <div class="card-title">Income ledger <span style="font-weight:400;text-transform:none;letter-spacing:0;font-size:11px;color:#888780">&mdash; click a row to edit</span></div>
+    <div id="income-ledger-wrap"><div class="empty">No income recorded yet.</div></div>
+  </div>
+</div>
+
+<!-- MEMBERS -->
+<div id="panel-members" class="panel">
+  <div class="card">
+    <div class="card-title">Select member</div>
+    <div id="member-pills"><div class="empty">No members yet — add deposits first.</div></div>
+  </div>
+  <div id="member-detail"></div>
+</div>
+
+<!-- MEMBERSHIP -->
+<div id="panel-membership" class="panel">
+  <div class="card">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+      <div class="card-title" id="reg-form-title" style="margin-bottom:0">Member registration form</div>
+      <button id="reg-cancel-btn" onclick="cancelMemberEdit()" style="display:none;font-size:12px;color:#a32d2d;border-color:#f09595">&#10005; Cancel edit</button>
+    </div>
+    <input type="hidden" id="reg-edit-id"/>
+    <div class="row" style="margin-bottom:10px">
+      <div class="f15"><label>Member full name</label><input id="reg-member-name" type="text" placeholder="e.g. Amaka Obi"/></div>
+      <div class="f1"><label>Date joined</label><input id="reg-member-date" type="date"/></div>
+      <div style="flex:0;display:flex;gap:6px">
+        <button id="reg-add-btn" class="btn-primary" onclick="addMemberReg()">Add member &#8599;</button>
+        <button id="reg-update-btn" class="btn-primary" onclick="saveMemberEdit()" style="display:none;background:#1d6f42;border-color:#1d6f42">&#10003; Update</button>
+      </div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-title">Member register <span style="font-weight:400;text-transform:none;letter-spacing:0;font-size:11px;color:#888780">&mdash; click a row to edit</span></div>
+    <div id="reg-member-table-wrap"><div class="empty">No members registered yet.</div></div>
+  </div>
+</div>
+
+<!-- KYC -->
+<div id="panel-kyc" class="panel">
+  <div class="card">
+    <div style="display:flex;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:14px">
+      <div style="flex:1;min-width:200px;max-width:320px">
+        <label style="font-size:11px;font-weight:600;color:#888780;text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:4px">Member</label>
+        <select id="kyc-member-select" onchange="onKYCMemberChange(this.value)"><option value="">— Select a member —</option></select>
+      </div>
+      <div id="kyc-status-badge"></div>
+      <div id="kyc-action-btns" style="display:none;gap:8px;flex-wrap:wrap">
+        <button id="kyc-edit-btn" onclick="enableKYCEdit()">&#9998; Edit</button>
+        <button id="kyc-clear-btn" onclick="clearKYCForm()">Clear</button>
+        <button id="kyc-save-btn" class="btn-primary" onclick="saveKYC()">&#10003; Save KYC</button>
+      </div>
+    </div>
+    <div id="kyc-form-body" style="display:none">
+      <div style="font-size:11px;font-weight:600;color:#888780;text-transform:uppercase;letter-spacing:.05em;padding-bottom:6px;border-bottom:1px solid #d3d1c7;margin-bottom:10px">&#128100; Next of kin details</div>
+      <div class="kyc-notice">In the event of the death, incapacitation, or any other eventuality affecting a Member, the individual named below shall be recognised as the Member's designated beneficiary and point of contact for purposes relating to the Member's Units and entitlements in the Group.</div>
+      <div class="field-row">
+        <div><label>Full Name</label><input id="kyc-nok-name" type="text" placeholder="Full legal name"/></div>
+        <div><label>Date of Birth</label><input id="kyc-nok-dob" type="date"/></div>
+      </div>
+      <div class="field-row">
+        <div><label>Gender</label>
+          <select id="kyc-nok-gender"><option value="">— Select —</option><option>Male</option><option>Female</option><option>Other</option><option>Prefer not to say</option></select>
+        </div>
+        <div><label>Relationship to Member</label>
+          <select id="kyc-nok-relationship"><option value="">— Select —</option><option>Spouse</option><option>Parent</option><option>Child</option><option>Sibling</option><option>Aunt / Uncle</option><option>Cousin</option><option>Nephew / Niece</option><option>Friend</option><option>Other</option></select>
+        </div>
+      </div>
+      <div class="field-row">
+        <div><label>Phone Number (Primary)</label><input id="kyc-nok-phone1" type="tel" placeholder="+234 xxx xxx xxxx"/></div>
+        <div><label>Phone Number (Alternative)</label><input id="kyc-nok-phone2" type="tel" placeholder="+234 xxx xxx xxxx"/></div>
+      </div>
+      <div class="field-row">
+        <div><label>Email Address</label><input id="kyc-nok-email" type="email" placeholder="email@example.com"/></div>
+        <div><label>Residential Address</label><input id="kyc-nok-address" type="text" placeholder="Street address"/></div>
+      </div>
+      <div class="field-row">
+        <div><label>City</label><input id="kyc-nok-city" type="text" placeholder="City"/></div>
+        <div><label>State</label><input id="kyc-nok-state" type="text" placeholder="State / Province"/></div>
+      </div>
+      <div class="kyc-notice" style="margin-bottom:18px"><strong>Note:</strong> The Member accepts full responsibility for updating next-of-kin information in the event of any changes. The Group shall bear no liability arising from outdated or incorrect next-of-kin information.</div>
+      <div style="font-size:11px;font-weight:600;color:#888780;text-transform:uppercase;letter-spacing:.05em;padding-bottom:6px;border-bottom:1px solid #d3d1c7;margin-bottom:10px">&#127981; Primary bank account</div>
+      <div class="kyc-notice">The Member's bank details below shall be used exclusively for the purpose of remitting profits, withdrawals, and any other entitlements accruing to the Member.</div>
+      <div class="field-row three">
+        <div><label>Account Name</label><input id="kyc-bank1-name" type="text" placeholder="Account holder name"/></div>
+        <div><label>Account Number</label><input id="kyc-bank1-number" type="text" placeholder="0000000000" maxlength="20"/></div>
+        <div><label>Bank Name</label><input id="kyc-bank1-bank" type="text" placeholder="Bank name"/></div>
+      </div>
+      <div style="font-size:11px;font-weight:600;color:#888780;text-transform:uppercase;letter-spacing:.05em;padding-bottom:6px;border-bottom:1px solid #d3d1c7;margin:14px 0 10px">&#127981; Alternative account <span style="font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></div>
+      <div class="field-row three">
+        <div><label>Account Name</label><input id="kyc-bank2-name" type="text" placeholder="Account holder name"/></div>
+        <div><label>Account Number</label><input id="kyc-bank2-number" type="text" placeholder="0000000000" maxlength="20"/></div>
+        <div><label>Bank Name</label><input id="kyc-bank2-bank" type="text" placeholder="Bank name"/></div>
+      </div>
+    </div>
+  </div>
+  <div id="kyc-members-overview"></div>
+</div>
+
+    </div><!-- end content-area -->
+
+    <div class="save-bar">
+      <div class="sync-dot synced" id="sync-dot"></div>
+      <span id="save-status">Connecting…</span>
+      <div style="margin-left:auto;display:flex;align-items:center;gap:8px">
+        <span id="realtime-badge" style="display:none;font-size:10px;padding:2px 7px;border-radius:10px;background:#eaf3de;color:#27500a;font-weight:600">&#9679; Live</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict';
+/* ══════════════════════════════════════════════
+   SUPABASE CONFIG
+══════════════════════════════════════════════ */
+const SUPA_URL='https://wyvunsiwrybkqlzjqdzx.supabase.co';
+const SUPA_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind5dnVuc2l3cnlia3FsempxZHp4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI3NDIyNjEsImV4cCI6MjA5ODMxODI2MX0.XN_arATrRZjdPfKuULjbiL-AXml0Hpk-YPejsXyL1OI';
+const FUND_ID='primary'; // single fund — all rows use this as the fund key
+
+const { createClient } = supabase;
+const sb = createClient(SUPA_URL, SUPA_KEY);
+
+/* ══════════════════════════════════════════════
+   AUTH STATE
+══════════════════════════════════════════════ */
+let currentUser = null;
+let currentRole = 'member'; // 'admin' | 'member'
+let realtimeChannel = null;
+
+/* ══════════════════════════════════════════════
+   STATE
+══════════════════════════════════════════════ */
+const LS_KEY='inv_club_v29_cache'; // local cache only — source of truth is Supabase
+const today=new Date().toISOString().split('T')[0];
+let deposits=[], withdrawals=[], portfolioItems=[], purchases=[], incomeRecords=[];
+let brokerRegistry=[], assetTypeRegistry=[], navValuations=[], profitRounds=[];
+let membersRegistry=[], kycData={}, auditLog=[];
+let selectedMember=null, selectedOwnershipMember=null, kycEditMode=false;
+let chartCumulative=null, chartShare=null, chartProfit=null;
+let _lastSyncTime = null;
+let _saveDebounceTimer = null;
+
+/* ── init date fields ── */
+setTimeout(()=>{
+  ['dep-date','wdw-date','port-date','purch-date','nav-val-date','profit-date','income-date','reg-member-date','fund-start'].forEach(id=>{
+    const el=document.getElementById(id);if(el&&!el.value)el.value=today;
+  });
+},0);
+
+/* ══════════════════════════════════════════════
+   AUTH UI
+══════════════════════════════════════════════ */
+function showSignIn(){
+  document.getElementById('auth-signin-view').style.display='block';
+  document.getElementById('auth-forgot-view').style.display='none';
+}
+function showForgot(){
+  document.getElementById('auth-signin-view').style.display='none';
+  document.getElementById('auth-forgot-view').style.display='block';
+}
+async function signIn(){
+  const email=document.getElementById('auth-email').value.trim();
+  const password=document.getElementById('auth-password').value;
+  const msg=document.getElementById('auth-signin-msg');
+  msg.className='auth-msg';msg.textContent='Signing in…';
+  const {data,error}=await sb.auth.signInWithPassword({email,password});
+  if(error){msg.className='auth-msg err';msg.textContent=error.message;return;}
+  msg.className='auth-msg ok';msg.textContent='Signed in. Loading fund data…';
+}
+async function signOut(){
+  await sb.auth.signOut();
+  currentUser=null;currentRole='member';
+  document.getElementById('auth-overlay').style.display='flex';
+  document.getElementById('topbar-user-info').style.display='none';
+  if(realtimeChannel){sb.removeChannel(realtimeChannel);realtimeChannel=null;}
+  setSyncStatus('offline','Signed out');
+}
+async function sendReset(){
+  const email=document.getElementById('auth-forgot-email').value.trim();
+  const msg=document.getElementById('auth-forgot-msg');
+  if(!email){msg.className='auth-msg err';msg.textContent='Enter your email.';return;}
+  const {error}=await sb.auth.resetPasswordForEmail(email);
+  if(error){msg.className='auth-msg err';msg.textContent=error.message;return;}
+  msg.className='auth-msg ok';msg.textContent='Reset link sent — check your inbox.';
+}
+async function resolveRole(userId){
+  try{
+    const {data}=await sb.from('user_roles').select('role').eq('user_id',userId).single();
+    return data?data.role:'member';
+  }catch(e){return 'member';}
+}
+function applyRoleUI(role){
+  currentRole=role;
+  const badge=document.getElementById('topbar-user-role-badge');
+  if(badge){
+    badge.className='auth-role-badge '+(role==='admin'?'role-admin':'role-member');
+    badge.textContent=role==='admin'?'👑 Admin':'👤 Member';
+  }
+  // hide write controls for members
+  const writeEls=document.querySelectorAll('[data-admin-only]');
+  writeEls.forEach(el=>{el.style.display=role==='admin'?'':'none';});
+}
+
+/* ══════════════════════════════════════════════
+   SYNC STATUS UI
+══════════════════════════════════════════════ */
+function setSyncStatus(state, msg){
+  const dot=document.getElementById('sync-dot');
+  const dot2=document.getElementById('storage-sync-dot');
+  const lbl=document.getElementById('storage-sync-label');
+  const statusEl=document.getElementById('save-status');
+  const states={synced:'synced',syncing:'syncing',error:'error',offline:'offline'};
+  [dot,dot2].forEach(d=>{if(d){d.className='sync-dot '+(states[state]||'offline');}});
+  if(statusEl)statusEl.textContent=msg||'';
+  if(lbl)lbl.textContent=state==='synced'?'Connected':state==='syncing'?'Syncing…':state==='error'?'Sync error':'Offline';
+  const lastEl=document.getElementById('storage-last-sync');
+  if(lastEl&&state==='synced'){lastEl.textContent='Last sync: '+new Date().toLocaleTimeString();_lastSyncTime=new Date();}
+}
+function setStatus(m){document.getElementById('save-status').textContent=m;}
+
+/* ══════════════════════════════════════════════
+   SUPABASE DATA ENGINE
+   Strategy: one row per collection in fund_data table
+   Schema: fund_data(id serial, fund_id text, collection text, payload jsonb, updated_at timestamptz)
+   Unique constraint: (fund_id, collection)
+══════════════════════════════════════════════ */
+function buildPayload(){
+  return {
+    deposits, withdrawals, portfolioItems, purchases, incomeRecords,
+    brokerRegistry, assetTypeRegistry, navValuations, profitRounds,
+    kycData, membersRegistry, auditLog,
+    settings: getSettings(), _v29: true
+  };
+}
+function applyPayload(d){
+  if(!d)return;
+  deposits=d.deposits||[];
+  withdrawals=d.withdrawals||[];
+  portfolioItems=d.portfolioItems||[];
+  purchases=d.purchases||[];
+  incomeRecords=d.incomeRecords||[];
+  brokerRegistry=d.brokerRegistry||[];
+  assetTypeRegistry=d.assetTypeRegistry||[];
+  navValuations=d.navValuations||[];
+  profitRounds=d.profitRounds||[];
+  kycData=d.kycData||{};
+  membersRegistry=d.membersRegistry||[];
+  auditLog=d.auditLog||[];
+  if(d.settings)applySettings(d.settings);
+}
+
+/* debounced cloud save — coalesces rapid sequential saves into one write */
+function save(){
+  // write to local cache immediately (fast path)
+  try{localStorage.setItem(LS_KEY,JSON.stringify(buildPayload()));}catch(e){}
+  // debounce cloud write by 800ms
+  clearTimeout(_saveDebounceTimer);
+  _saveDebounceTimer=setTimeout(()=>_cloudSave(),800);
+}
+async function _cloudSave(){
+  if(!currentUser){setSyncStatus('offline','Not signed in');return;}
+  setSyncStatus('syncing','Saving to cloud…');
+  try{
+    const payload=buildPayload();
+    const {error}=await sb.from('fund_data')
+      .upsert({fund_id:FUND_ID,collection:'main',payload,updated_at:new Date().toISOString()},
+              {onConflict:'fund_id,collection'});
+    if(error)throw error;
+    setSyncStatus('synced','Saved to cloud — '+new Date().toLocaleTimeString());
+  }catch(e){
+    setSyncStatus('error','Cloud save failed: '+e.message);
+    console.error('Supabase save error',e);
+  }
+}
+async function loadFromCloud(){
+  setSyncStatus('syncing','Loading from cloud…');
+  try{
+    const {data,error}=await sb.from('fund_data')
+      .select('payload,updated_at')
+      .eq('fund_id',FUND_ID)
+      .eq('collection','main')
+      .single();
+    if(error&&error.code!=='PGRST116')throw error; // PGRST116 = no rows found (first run)
+    if(data&&data.payload){
+      applyPayload(data.payload);
+      // also update local cache
+      try{localStorage.setItem(LS_KEY,JSON.stringify(data.payload));}catch(e){}
+      setSyncStatus('synced','Loaded from cloud — '+new Date().toLocaleTimeString());
+    } else {
+      // First run — try local cache as seed
+      const cached=localStorage.getItem(LS_KEY);
+      if(cached){applyPayload(JSON.parse(cached));setSyncStatus('synced','First run — seeded from local cache');}
+      else setSyncStatus('synced','No data yet — start adding deposits');
+    }
+  }catch(e){
+    setSyncStatus('error','Cloud load failed: '+e.message);
+    // fall back to local cache
+    try{const cached=localStorage.getItem(LS_KEY);if(cached){applyPayload(JSON.parse(cached));setStatus('Offline — showing cached data');}}catch(_){}
+  }
+  updateNavDisplay();renderAll();
+}
+async function forceSyncFromCloud(){
+  setSyncStatus('syncing','Refreshing from cloud…');
+  await loadFromCloud();
+}
+
+/* ══════════════════════════════════════════════
+   REALTIME SUBSCRIPTION
+══════════════════════════════════════════════ */
+function subscribeRealtime(){
+  if(realtimeChannel){sb.removeChannel(realtimeChannel);realtimeChannel=null;}
+  realtimeChannel=sb.channel('fund_data_changes')
+    .on('postgres_changes',{event:'UPDATE',schema:'public',table:'fund_data',filter:`fund_id=eq.${FUND_ID}`},
+      payload=>{
+        // only apply if the change is newer than our last save and not from us
+        if(payload.new&&payload.new.payload){
+          applyPayload(payload.new.payload);
+          updateNavDisplay();renderAll();
+          setSyncStatus('synced','Updated by another user — '+new Date().toLocaleTimeString());
+          // flash effect
+          document.querySelector('.content-area').classList.add('rt-flash');
+          setTimeout(()=>document.querySelector('.content-area').classList.remove('rt-flash'),1200);
+        }
+      })
+    .subscribe(status=>{
+      const badge=document.getElementById('realtime-badge');
+      if(badge)badge.style.display=status==='SUBSCRIBED'?'inline-block':'none';
+    });
+}
+
+/* ══════════════════════════════════════════════
+   AUTH LISTENER — entry point
+══════════════════════════════════════════════ */
+sb.auth.onAuthStateChange(async(event,session)=>{
+  if(session&&session.user){
+    currentUser=session.user;
+    const role=await resolveRole(session.user.id);
+    applyRoleUI(role);
+    // update topbar
+    const ui=document.getElementById('topbar-user-info');if(ui)ui.style.display='flex';
+    const em=document.getElementById('topbar-user-email');if(em)em.textContent=session.user.email;
+    // hide auth overlay
+    document.getElementById('auth-overlay').style.display='none';
+    // load data and subscribe
+    await loadFromCloud();
+    subscribeRealtime();
+    // init date fields
+    setTimeout(()=>{
+      ['dep-date','wdw-date','port-date','purch-date','nav-val-date','profit-date','income-date','reg-member-date','fund-start'].forEach(id=>{
+        const el=document.getElementById(id);if(el&&!el.value)el.value=today;
+      });
+    },50);
+    // open overview
+    const ob=document.getElementById('nav-overview');
+    if(ob){toggleOverviewMenu(ob);const fb=document.getElementById('nav-ov-fund');if(fb)switchOverviewTab('ov-fund',fb);}
+  } else {
+    // not signed in — show auth overlay, hide app
+    document.getElementById('auth-overlay').style.display='flex';
+    const ui=document.getElementById('topbar-user-info');if(ui)ui.style.display='none';
+    setSyncStatus('offline','Please sign in');
+  }
+});
+
+/* ══════════════════════════════════════════════
+   FORMATTING HELPERS
+══════════════════════════════════════════════ */
+function stripNonNumeric(el){const p=el.selectionStart;el.value=el.value.replace(/[^0-9.]/g,'');try{el.setSelectionRange(p,p);}catch(e){}}
+function applyFormatting(el,rawId){
+  const num=parseFloat(el.value.replace(/[^0-9.]/g,''));
+  if(!isNaN(num)&&num>0){document.getElementById(rawId).value=num;el.value=num.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});el.classList.add('input-formatted');}
+  else{document.getElementById(rawId).value='';el.value='';el.classList.remove('input-formatted');}
+}
+function stripFormatting(el,rawId){const raw=document.getElementById(rawId).value;if(raw){el.value=raw;el.classList.remove('input-formatted');}}
+function getRaw(rawId){return parseFloat(document.getElementById(rawId).value)||0;}
+function forceRaw(textId,rawId){const el=document.getElementById(textId);const num=parseFloat(el.value.replace(/[^0-9.]/g,''));if(!isNaN(num)&&num>0)document.getElementById(rawId).value=num;else document.getElementById(rawId).value='';}
+function getCurrency(){return document.getElementById('currency').value;}
+function fmt(n){return getCurrency()+Number(n).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});}
+function fmtU(n){return Number(n).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});}
+function initials(n){return n.split(' ').map(w=>w[0]||'').join('').toUpperCase().slice(0,2);}
+function dateAddYears(dateStr,y){if(!dateStr)return null;const d=new Date(dateStr);d.setFullYear(d.getFullYear()+y);return d.toISOString().split('T')[0];}
+function setVal(id,val){const el=document.getElementById(id);if(el)el.value=val||'';}
+function getVal(id){const el=document.getElementById(id);return el?el.value.trim():'';}
+function maskAccount(num){if(!num)return '—';const s=String(num);return s.length>4?s.slice(0,-4).replace(/\d/g,'*')+s.slice(-4):s;}
+
+/* ══════════════════════════════════════════════
+   NAV CORE (FIX #1 & #5)
+   Always use getNavOnDate(date) for all deposits/withdrawals
+══════════════════════════════════════════════ */
+function getInitialNav(){return parseFloat(document.getElementById('init-nav').value)||1000;}
+function getCurrentNAV(){
+  if(navValuations.length){const sorted=[...navValuations].sort((a,b)=>b.date.localeCompare(a.date));return sorted[0].nav;}
+  return getInitialNav();
+}
+/* FIX #5: look up the NAV effective on a given date (last valuation on or before date) */
+function getNavOnDate(date){
+  const relevant=navValuations.filter(v=>v.date<=date).sort((a,b)=>b.date.localeCompare(a.date));
+  if(relevant.length)return relevant[0].nav;
+  return getInitialNav();
+}
+function getTotalUnits(){
+  const d=deposits.reduce((s,x)=>s+x.units,0);
+  const w=withdrawals.reduce((s,x)=>s+x.units,0);
+  return Math.max(d-w,0);
+}
+function updateNavDisplay(){
+  const nav=getCurrentNAV();
+  const s=getCurrency()+nav.toLocaleString(undefined,{minimumFractionDigits:4,maximumFractionDigits:4});
+  ['nav-display','m-nav'].forEach(id=>{const el=document.getElementById(id);if(el)el.textContent=s;});
+  updateDepNavHint();updateWdwNavHint();
+}
+
+/* ── deposit-form NAV hint (date-sensitive) ── */
+function updateDepNavHint(){
+  const date=document.getElementById('dep-date').value||today;
+  const nav=getNavOnDate(date);
+  const el=document.getElementById('dep-nav-label');
+  if(el)el.textContent=getCurrency()+nav.toLocaleString(undefined,{minimumFractionDigits:4,maximumFractionDigits:4});
+}
+function updateWdwNavHint(){
+  const date=document.getElementById('wdw-date').value||today;
+  const nav=getNavOnDate(date);
+  const el=document.getElementById('wdw-nav-label');
+  if(el)el.textContent=getCurrency()+nav.toLocaleString(undefined,{minimumFractionDigits:4,maximumFractionDigits:4});
+}
+
+/* ══════════════════════════════════════════════
+   LOCK-IN HELPERS (FIX #3 & #4)
+══════════════════════════════════════════════ */
+function getLockInYears(){return parseFloat(document.getElementById('lockin-years').value)||3;}
+function getHorizonYears(){return parseFloat(document.getElementById('horizon-years').value)||5;}
+function getFundStart(){return document.getElementById('fund-start').value||null;}
+function getLockInEndDate(){const s=getFundStart();return s?dateAddYears(s,getLockInYears()):null;}
+function getHorizonEndDate(){const s=getFundStart();return s?dateAddYears(s,getHorizonYears()):null;}
+
+function checkProfitLockIn(){
+  const date=document.getElementById('profit-date').value||today;
+  const banner=document.getElementById('profit-lockin-banner');
+  const txt=document.getElementById('profit-lockin-text');
+  const lockEnd=getLockInEndDate();
+  if(lockEnd&&date<lockEnd){
+    const lyrs=getLockInYears();
+    txt.innerHTML=`<strong>Lock-in period active.</strong> The fund's ${lyrs}-year lock-in period ends on <strong>${lockEnd}</strong>. Distributing profit before this date goes against the agreed fund rules. You may proceed by acknowledging this, but it will be recorded in the audit log.`;
+    banner.style.display='flex';
+  } else {
+    banner.style.display='none';
+  }
+}
+function checkWithdrawalLockIn(){
+  const date=document.getElementById('wdw-date').value||today;
+  const warn=document.getElementById('wdw-lockin-warn');
+  const txt=document.getElementById('wdw-lockin-warn-text');
+  const lockEnd=getLockInEndDate();
+  const horizEnd=getHorizonEndDate();
+  if(horizEnd&&date<horizEnd){
+    const hyrs=getHorizonYears();
+    const lyrs=getLockInYears();
+    let msg=`<strong>Early withdrawal warning.</strong> This withdrawal is within the ${hyrs}-year minimum holding period`;
+    if(lockEnd&&date<lockEnd) msg+=` and the ${lyrs}-year lock-in period`;
+    msg+=`. Early withdrawals are subject to committee approval and will be recorded in the audit log.`;
+    txt.innerHTML=msg;
+    warn.style.display='flex';
+  } else {
+    warn.style.display='none';
+  }
+}
+function checkStdContribution(){
+  const std=getRaw('std-contribution-raw');
+  const amount=getRaw('dep-amount-raw');
+  const warn=document.getElementById('dep-contribution-warn');
+  if(!std||!amount||!warn){if(warn)warn.style.display='none';return;}
+  const pct=Math.abs(amount-std)/std;
+  if(pct>0.1){
+    warn.textContent=`Note: Standard monthly contribution is ${fmt(std)}. This deposit of ${fmt(amount)} differs by ${(pct*100).toFixed(0)}%.`;
+    warn.style.display='block';
+  } else {
+    warn.style.display='none';
+  }
+}
+function updateTopbarLockIn(){
+  const badge=document.getElementById('topbar-lockin-badge');
+  if(!badge)return;
+  const lockEnd=getLockInEndDate();
+  const horizEnd=getHorizonEndDate();
+  if(!lockEnd){badge.style.display='none';return;}
+  if(today<lockEnd){
+    badge.innerHTML=`<span class="tag tag-amber">&#128274; Lock-in active until ${lockEnd}</span>`;
+    badge.style.display='block';
+  } else if(horizEnd&&today<horizEnd){
+    badge.innerHTML=`<span class="tag tag-blue">&#9203; Holding period — matures ${horizEnd}</span>`;
+    badge.style.display='block';
+  } else if(horizEnd&&today>=horizEnd){
+    badge.innerHTML=`<span class="tag tag-green">&#10003; Fund matured ${horizEnd}</span>`;
+    badge.style.display='block';
+  } else {
+    badge.style.display='none';
+  }
+}
+
+/* ══════════════════════════════════════════════
+   AUDIT LOG
+══════════════════════════════════════════════ */
+function audit(action,detail){
+  auditLog.unshift({ts:new Date().toISOString(),action,detail});
+  if(auditLog.length>500)auditLog.splice(500);
+}
+function renderAuditLog(){
+  const wrap=document.getElementById('audit-log-wrap');if(!wrap)return;
+  if(!auditLog.length){wrap.innerHTML='<div class="empty">No audit events yet.</div>';return;}
+  let h='<div style="overflow-x:auto"><table><thead><tr>'
+    +'<th style="width:150px">Timestamp</th><th style="width:140px">Action</th><th>Detail</th>'
+    +'</tr></thead><tbody>';
+  auditLog.forEach(e=>{
+    const ts=new Date(e.ts).toLocaleString();
+    h+=`<tr class="audit-row"><td>${ts}</td><td><span class="tag ${e.action.includes('Delete')||e.action.includes('Remove')?'tag-red':e.action.includes('Edit')?'tag-amber':'tag-green'}">${e.action}</span></td><td style="white-space:normal;font-size:11px">${e.detail}</td></tr>`;
+  });
+  wrap.innerHTML=h+'</tbody></table></div>';
+}
+
+/* ══════════════════════════════════════════════
+   STORAGE METER
+══════════════════════════════════════════════ */
+function updateStorageMeter(){
+  const fill=document.getElementById('storage-meter-fill');
+  const label=document.getElementById('storage-used-label');
+  const warn=document.getElementById('storage-warn-msg');
+  if(!fill||!label)return;
+  try{
+    const raw=localStorage.getItem(LS_KEY)||'';
+    const bytes=new Blob([raw]).size;
+    const kb=bytes/1024;
+    const mb=kb/1024;
+    const maxMB=5;
+    const pct=Math.min((mb/maxMB)*100,100);
+    label.textContent=kb<1024?kb.toFixed(0)+' KB':mb.toFixed(2)+' MB';
+    fill.style.width=pct+'%';
+    fill.className='storage-meter-fill'+(pct>80?' danger':pct>60?' warn':'');
+    if(warn){
+      if(pct>80){warn.textContent='⚠ Storage is nearly full. Export a backup and consider clearing old data.';warn.style.display='block';}
+      else if(pct>60){warn.textContent='Storage is over 60% full. Consider exporting a backup soon.';warn.style.display='block';}
+      else{warn.style.display='none';}
+    }
+  }catch(e){}
+}
+
+/* ══════════════════════════════════════════════
+   FUND TIMELINE (Priority #7)
+══════════════════════════════════════════════ */
+function renderFundTimeline(){
+  const wrap=document.getElementById('fund-timeline-wrap');if(!wrap)return;
+  const start=getFundStart();
+  if(!start){wrap.innerHTML='<div class="empty" style="padding:10px">Set the fund start date in Settings → Fund Identity.</div>';return;}
+  const lyrs=getLockInYears();
+  const hyrs=getHorizonYears();
+  const lockEnd=dateAddYears(start,lyrs);
+  const horizEnd=dateAddYears(start,hyrs);
+  const midLock=dateAddYears(start,Math.floor(lyrs/2));
+  function nodeState(date){
+    if(today>=date)return'done';
+    if(today>=dateAddYears(date,-0.05))return'now';
+    return'locked';
+  }
+  function isCurrent(a,b){return today>=a&&today<b;}
+  const phases=[
+    {date:start,label:'Fund Start',sub:start},
+    {date:midLock,label:`Year ${Math.floor(lyrs/2)}`,sub:'Lock-in'},
+    {date:lockEnd,label:`Year ${lyrs}`,sub:'Lock-in ends'},
+    {date:horizEnd,label:`Year ${hyrs}`,sub:'Fund matures'},
+  ];
+  let h='<div class="timeline-wrap">';
+  phases.forEach((p,i)=>{
+    const st=today>=p.date?'done':(i>0&&today>=phases[i-1].date?'now':'locked');
+    if(i>0){
+      const lineDone=today>=phases[i-1].date&&today>=p.date;
+      const lineCur=today>=phases[i-1].date&&today<p.date;
+      h+=`<div class="tl-line ${lineDone?'done':lineCur?'':''}"></div>`;
+    }
+    h+=`<div class="tl-node">
+      <div class="tl-dot ${st}"></div>
+      <div class="tl-label ${st==='done'?'done':st==='now'?'now':''}">${p.label}</div>
+      <div class="tl-sub">${p.sub}</div>
+    </div>`;
+  });
+  h+='</div>';
+  // status line
+  if(today<lockEnd){
+    const daysLeft=Math.ceil((new Date(lockEnd)-new Date(today))/(1000*86400));
+    h+=`<div style="font-size:12px;color:#633806;margin-top:6px">&#128274; Lock-in period active — <strong>${daysLeft} days</strong> until profit distributions are permitted (${lockEnd})</div>`;
+  } else if(today<horizEnd){
+    const daysLeft=Math.ceil((new Date(horizEnd)-new Date(today))/(1000*86400));
+    h+=`<div style="font-size:12px;color:#185fa5;margin-top:6px">&#9203; Holding period — fund matures in <strong>${daysLeft} days</strong> (${horizEnd})</div>`;
+  } else {
+    h+=`<div style="font-size:12px;color:#27500a;margin-top:6px">&#10003; Fund matured on <strong>${horizEnd}</strong>. Distributions and redemptions are open.</div>`;
+  }
+  wrap.innerHTML=h;
+}
+
+/* ══════════════════════════════════════════════
+   SETTINGS HELPERS
+══════════════════════════════════════════════ */
+function getSettings(){
+  return{
+    fundName:document.getElementById('fund-name').value,
+    currency:getCurrency(),
+    nav:document.getElementById('init-nav').value,
+    startDate:document.getElementById('fund-start').value,
+    lockinYears:document.getElementById('lockin-years').value,
+    horizonYears:document.getElementById('horizon-years').value,
+    stdContribution:document.getElementById('std-contribution-raw').value,
+  };
+}
+function applySettings(s){
+  if(!s)return;
+  if(s.fundName){document.getElementById('fund-name').value=s.fundName;document.getElementById('fund-name-header').textContent=s.fundName;}
+  if(s.currency)document.getElementById('currency').value=s.currency;
+  if(s.nav)document.getElementById('init-nav').value=s.nav;
+  if(s.startDate)document.getElementById('fund-start').value=s.startDate;
+  if(s.lockinYears!=null)document.getElementById('lockin-years').value=s.lockinYears;
+  if(s.horizonYears!=null)document.getElementById('horizon-years').value=s.horizonYears;
+  if(s.stdContribution){
+    document.getElementById('std-contribution-raw').value=s.stdContribution;
+    const el=document.getElementById('std-contribution');
+    const num=parseFloat(s.stdContribution);
+    if(!isNaN(num)&&num>0){el.value=num.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});el.classList.add('input-formatted');}
+  }
+}
+function saveSettings(){
+  const name=document.getElementById('fund-name').value||'Investment Manager';
+  document.getElementById('fund-name-header').textContent=name;
+  save();updateTopbarLockIn();
+}
+function clearAllData(){
+  if(currentRole!=='admin'){alert('Only admins can clear all data.');return;}
+  if(!confirm('Delete ALL fund data permanently from the cloud? This cannot be undone.'))return;
+  deposits=[];withdrawals=[];portfolioItems=[];purchases=[];incomeRecords=[];
+  brokerRegistry=[];assetTypeRegistry=[];navValuations=[];profitRounds=[];
+  kycData={};membersRegistry=[];auditLog=[];selectedMember=null;selectedOwnershipMember=null;
+  document.getElementById('fund-name').value='Investment Manager';
+  document.getElementById('fund-name-header').textContent='Investment Manager';
+  document.getElementById('currency').value='\u20a6';
+  document.getElementById('init-nav').value='1000';
+  document.getElementById('fund-start').value=today;
+  document.getElementById('lockin-years').value='3';
+  document.getElementById('horizon-years').value='5';
+  document.getElementById('std-contribution').value='';
+  document.getElementById('std-contribution-raw').value='';
+  document.getElementById('profit-result').innerHTML='<div class="empty">Enter profit details above and click Calculate &amp; save.</div>';
+  document.getElementById('profit-history-card').style.display='none';
+  updateNavDisplay();renderAll();save();setStatus('All data cleared and pushed to cloud');
+}
+function exportJSON(){
+  const data={...buildPayload(),exportedAt:new Date().toISOString()};
+  const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+  const fn=(document.getElementById('fund-name').value||'investment_club').replace(/[^a-z0-9]/gi,'_').toLowerCase();
+  a.download=fn+'_backup_v29_'+today+'.json';a.click();
+  audit('Export','Data exported to '+a.download);
+  setSyncStatus('synced','Exported — '+a.download);
+}
+function toggleImport(){const el=document.getElementById('import-area');el.style.display=el.style.display==='block'?'none':'block';document.getElementById('import-msg').textContent='';}
+function importJSON(){
+  if(currentRole!=='admin'){alert('Only admins can import data.');return;}
+  const file=document.getElementById('bak-file').files[0];
+  if(!file){document.getElementById('import-msg').textContent='Select a file first.';return;}
+  const reader=new FileReader();
+  reader.onload=async function(e){
+    try{
+      const d=JSON.parse(e.target.result);
+      if(!d.deposits)throw new Error('Invalid backup file');
+      if(!confirm('Replace ALL cloud data with this backup?'))return;
+      applyPayload(d);
+      audit('Import','Restored from backup: '+file.name);
+      save();updateNavDisplay();renderAll();
+      document.getElementById('import-msg').textContent='Import successful — '+deposits.length+' deposits pushed to cloud.';
+      document.getElementById('import-msg').style.color='#27500a';
+    }catch(err){document.getElementById('import-msg').textContent='Error: '+err.message;document.getElementById('import-msg').style.color='#a32d2d';}
+  };
+  reader.readAsText(file);
+}
+/* ══════════════════════════════════════════════
+   DEPOSITS  (FIX #1 #2 #5)
+══════════════════════════════════════════════ */
+function clearDepositForm(){
+  document.getElementById('dep-member').value='';
+  const a=document.getElementById('dep-amount');a.value='';a.classList.remove('input-formatted');
+  document.getElementById('dep-amount-raw').value='';
+  document.getElementById('dep-date').value=today;
+  document.getElementById('dep-contribution-warn').style.display='none';
+  updateDepNavHint();
+}
+function setDepositFormMode(editing){
+  document.getElementById('dep-form-title').textContent=editing?'Edit deposit':'Record a deposit';
+  document.getElementById('dep-add-btn').style.display=editing?'none':'inline-block';
+  document.getElementById('dep-update-btn').style.display=editing?'inline-block':'none';
+  document.getElementById('dep-cancel-btn').style.display=editing?'inline-block':'none';
+  document.getElementById('dep-edit-id').value='';
+  const card=document.getElementById('dep-update-btn').closest('.card');
+  if(card)card.style.borderColor=editing?'#1d6f42':'';
+}
+function addDeposit(){
+  const member=document.getElementById('dep-member').value.trim();
+  forceRaw('dep-amount','dep-amount-raw');
+  const amount=getRaw('dep-amount-raw');
+  const date=document.getElementById('dep-date').value;
+  if(!member){alert('Enter a member name.');return;}
+  if(!amount||amount<=0){alert('Enter a valid amount.');return;}
+  if(!date){alert('Select a date.');return;}
+  const nav=getNavOnDate(date); // FIX #5: date-appropriate NAV
+  deposits.push({member,amount,date,nav,units:amount/nav,id:Date.now()});
+  deposits.sort((a,b)=>a.date.localeCompare(b.date));
+  audit('Add Deposit',`${member}: ${fmt(amount)} @ NAV ${getCurrency()}${nav.toFixed(4)} on ${date} = ${fmtU(amount/nav)} units`);
+  clearDepositForm();updateMemberDatalist();save();renderAll();
+}
+function editDeposit(id){
+  const d=deposits.find(x=>x.id===id);if(!d)return;
+  document.getElementById('dep-member').value=d.member;
+  const amtEl=document.getElementById('dep-amount');
+  document.getElementById('dep-amount-raw').value=d.amount;
+  amtEl.value=d.amount.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+  amtEl.classList.add('input-formatted');
+  document.getElementById('dep-date').value=d.date;
+  document.getElementById('dep-edit-id').value=id;
+  setDepositFormMode(true);
+  updateDepNavHint();
+  document.getElementById('panel-deposits').querySelector('.card').scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+function saveDepositEdit(){
+  const id=parseInt(document.getElementById('dep-edit-id').value);
+  if(!id){alert('No deposit selected.');return;}
+  const member=document.getElementById('dep-member').value.trim();
+  forceRaw('dep-amount','dep-amount-raw');
+  const amount=getRaw('dep-amount-raw');
+  const date=document.getElementById('dep-date').value;
+  if(!member||!amount||amount<=0||!date){alert('Complete all fields.');return;}
+  const idx=deposits.findIndex(x=>x.id===id);if(idx===-1)return;
+  const old=deposits[idx];
+  // FIX #2: use the NAV effective on the deposit date, NOT the current NAV
+  const nav=getNavOnDate(date);
+  deposits[idx]={...old,member,amount,date,nav,units:amount/nav};
+  deposits.sort((a,b)=>a.date.localeCompare(b.date));
+  audit('Edit Deposit',`${member}: changed from ${fmt(old.amount)} on ${old.date} to ${fmt(amount)} on ${date}`);
+  clearDepositForm();setDepositFormMode(false);updateMemberDatalist();save();renderAll();
+}
+function cancelDepositEdit(){clearDepositForm();setDepositFormMode(false);}
+function removeDeposit(id){
+  if(!confirm('Remove this deposit?'))return;
+  const d=deposits.find(x=>x.id===id);
+  if(d)audit('Delete Deposit',`${d.member}: ${fmt(d.amount)} on ${d.date}`);
+  if(parseInt(document.getElementById('dep-edit-id').value)===id){clearDepositForm();setDepositFormMode(false);}
+  deposits=deposits.filter(x=>x.id!==id);save();renderAll();
+}
+function renderLedger(){
+  if(!deposits.length){document.getElementById('ledger-wrap').innerHTML='<div class="empty">No deposits yet.</div>';return;}
+  const editingId=parseInt(document.getElementById('dep-edit-id').value)||0;
+  let h='<div style="overflow-x:auto"><table><thead><tr>'
+    +'<th style="width:90px">Date</th><th style="width:76px">Member ID</th><th>Member</th>'
+    +'<th class="num" style="width:120px">Amount</th><th class="num" style="width:100px">NAV used</th>'
+    +'<th class="num" style="width:80px">Units</th><th style="width:44px"></th></tr></thead><tbody>';
+  deposits.forEach(d=>{
+    const isEd=d.id===editingId;
+    const mReg=membersRegistry.find(r=>r.name===d.member);
+    const memberId=mReg?mReg.memberId:'—';
+    h+=`<tr style="cursor:pointer;${isEd?'background:#eaf6ef':''}" onclick="editDeposit(${d.id})"
+      onmouseover="this.style.background='${isEd?'#d6eedf':'#f4f4f2'}'"
+      onmouseout="this.style.background='${isEd?'#eaf6ef':''}'">
+      <td>${d.date}</td>
+      <td style="font-size:11px;font-weight:600;color:#0c447c">${memberId}</td>
+      <td><strong>${d.member}</strong></td>
+      <td class="num">${fmt(d.amount)}</td>
+      <td class="num" style="font-size:11px">${getCurrency()}${d.nav.toLocaleString(undefined,{minimumFractionDigits:4,maximumFractionDigits:4})}</td>
+      <td class="num">${fmtU(d.units)}</td>
+      <td onclick="event.stopPropagation()"><button class="btn-danger" onclick="removeDeposit(${d.id})" style="padding:3px 7px;font-size:11px">&#128465;</button></td>
+    </tr>`;
+  });
+  document.getElementById('ledger-wrap').innerHTML=h+'</tbody></table></div>';
+}
+
+/* ══════════════════════════════════════════════
+   WITHDRAWALS (FIX #4)
+══════════════════════════════════════════════ */
+function clearWithdrawalForm(){
+  document.getElementById('wdw-member').value='';
+  const a=document.getElementById('wdw-amount');a.value='';a.classList.remove('input-formatted');
+  document.getElementById('wdw-amount-raw').value='';
+  document.getElementById('wdw-date').value=today;
+  document.getElementById('wdw-reason').value='';
+  document.getElementById('wdw-lockin-warn').style.display='none';
+  updateWdwNavHint();
+}
+function setWithdrawalFormMode(editing){
+  document.getElementById('wdw-form-title').textContent=editing?'Edit withdrawal':'Record a withdrawal';
+  document.getElementById('wdw-add-btn').style.display=editing?'none':'inline-block';
+  document.getElementById('wdw-update-btn').style.display=editing?'inline-block':'none';
+  document.getElementById('wdw-cancel-btn').style.display=editing?'inline-block':'none';
+  document.getElementById('wdw-edit-id').value='';
+}
+function addWithdrawal(){
+  const member=document.getElementById('wdw-member').value.trim();
+  forceRaw('wdw-amount','wdw-amount-raw');
+  const amount=getRaw('wdw-amount-raw');
+  const date=document.getElementById('wdw-date').value;
+  const reason=document.getElementById('wdw-reason').value.trim();
+  if(!member){alert('Enter a member name.');return;}
+  if(!amount||amount<=0){alert('Enter a valid amount.');return;}
+  if(!date){alert('Select a date.');return;}
+  const horizEnd=getHorizonEndDate();
+  const lockEnd=getLockInEndDate();
+  if(horizEnd&&date<horizEnd){
+    let msg='This withdrawal is within the minimum holding period';
+    if(lockEnd&&date<lockEnd) msg+=' and the lock-in period';
+    msg+='. It will be recorded in the audit log. Continue?';
+    if(!confirm(msg))return;
+  }
+  const nav=getNavOnDate(date); // FIX: date-appropriate NAV
+  withdrawals.push({member,amount,date,nav,units:amount/nav,reason,id:Date.now()});
+  withdrawals.sort((a,b)=>a.date.localeCompare(b.date));
+  audit('Add Withdrawal',`${member}: ${fmt(amount)} @ NAV ${getCurrency()}${nav.toFixed(4)} on ${date}. Reason: ${reason||'not stated'}`);
+  clearWithdrawalForm();save();renderAll();
+}
+function editWithdrawal(id){
+  const d=withdrawals.find(x=>x.id===id);if(!d)return;
+  document.getElementById('wdw-member').value=d.member;
+  const amtEl=document.getElementById('wdw-amount');
+  document.getElementById('wdw-amount-raw').value=d.amount;
+  amtEl.value=d.amount.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+  amtEl.classList.add('input-formatted');
+  document.getElementById('wdw-date').value=d.date;
+  document.getElementById('wdw-reason').value=d.reason||'';
+  document.getElementById('wdw-edit-id').value=id;
+  setWithdrawalFormMode(true);
+  updateWdwNavHint();
+  document.getElementById('panel-withdrawals').querySelector('.card').scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+function saveWithdrawalEdit(){
+  const id=parseInt(document.getElementById('wdw-edit-id').value);if(!id)return;
+  const member=document.getElementById('wdw-member').value.trim();
+  forceRaw('wdw-amount','wdw-amount-raw');
+  const amount=getRaw('wdw-amount-raw');
+  const date=document.getElementById('wdw-date').value;
+  const reason=document.getElementById('wdw-reason').value.trim();
+  if(!member||!amount||amount<=0||!date){alert('Complete all required fields.');return;}
+  const idx=withdrawals.findIndex(x=>x.id===id);if(idx===-1)return;
+  const old=withdrawals[idx];
+  const nav=getNavOnDate(date);
+  withdrawals[idx]={...old,member,amount,date,nav,units:amount/nav,reason};
+  withdrawals.sort((a,b)=>a.date.localeCompare(b.date));
+  audit('Edit Withdrawal',`${member}: changed from ${fmt(old.amount)} on ${old.date} to ${fmt(amount)} on ${date}`);
+  clearWithdrawalForm();setWithdrawalFormMode(false);save();renderAll();
+}
+function cancelWithdrawalEdit(){clearWithdrawalForm();setWithdrawalFormMode(false);}
+function removeWithdrawal(id){
+  if(!confirm('Remove this withdrawal?'))return;
+  const w=withdrawals.find(x=>x.id===id);
+  if(w)audit('Delete Withdrawal',`${w.member}: ${fmt(w.amount)} on ${w.date}`);
+  if(parseInt(document.getElementById('wdw-edit-id').value)===id){clearWithdrawalForm();setWithdrawalFormMode(false);}
+  withdrawals=withdrawals.filter(x=>x.id!==id);save();renderAll();
+}
+function renderWithdrawalLedger(){
+  const el=document.getElementById('wdw-ledger-wrap');if(!el)return;
+  const regNames=membersRegistry.filter(m=>m.active!==false).map(m=>m.name);
+  const dl=document.getElementById('member-list-wdw');
+  if(dl)dl.innerHTML=regNames.map(n=>`<option value="${n}">`).join('');
+  if(!withdrawals.length){el.innerHTML='<div class="empty">No withdrawals yet.</div>';return;}
+  const editingId=parseInt(document.getElementById('wdw-edit-id').value)||0;
+  let h='<div style="overflow-x:auto"><table><thead><tr>'
+    +'<th style="width:90px">Date</th><th style="width:76px">Member ID</th><th>Member</th>'
+    +'<th class="num" style="width:120px">Amount</th><th class="num" style="width:100px">NAV used</th>'
+    +'<th class="num" style="width:80px">Units</th><th>Reason</th><th style="width:44px"></th></tr></thead><tbody>';
+  withdrawals.forEach(d=>{
+    const isEd=d.id===editingId;
+    const mReg=membersRegistry.find(r=>r.name===d.member);
+    const memberId=mReg?mReg.memberId:'—';
+    h+=`<tr style="cursor:pointer;${isEd?'background:#feecec':''}" onclick="editWithdrawal(${d.id})"
+      onmouseover="this.style.background='${isEd?'#fddcdc':'#f4f4f2'}'"
+      onmouseout="this.style.background='${isEd?'#feecec':''}'">
+      <td>${d.date}</td>
+      <td style="font-size:11px;font-weight:600;color:#0c447c">${memberId}</td>
+      <td><strong>${d.member}</strong></td>
+      <td class="num" style="color:#a32d2d">-${fmt(d.amount)}</td>
+      <td class="num" style="font-size:11px">${getCurrency()}${d.nav.toLocaleString(undefined,{minimumFractionDigits:4,maximumFractionDigits:4})}</td>
+      <td class="num" style="color:#a32d2d">-${fmtU(d.units)}</td>
+      <td style="font-size:11px;white-space:normal">${d.reason||'—'}</td>
+      <td onclick="event.stopPropagation()"><button class="btn-danger" onclick="removeWithdrawal(${d.id})" style="padding:3px 7px;font-size:11px">&#128465;</button></td>
+    </tr>`;
+  });
+  el.innerHTML=h+'</tbody></table></div>';
+}
+
+/* ══════════════════════════════════════════════
+   OWNERSHIP
+══════════════════════════════════════════════ */
+function renderOwnership(){
+  const el=document.getElementById('ownership-summary');if(!el)return;
+  const allMembers=[...new Set([...deposits.map(d=>d.member),...withdrawals.map(w=>w.member)])];
+  if(!allMembers.length){el.innerHTML='<div class="empty">No transactions yet.</div>';document.getElementById('ownership-detail').innerHTML='';return;}
+  const nav=getCurrentNAV();
+  const summary=allMembers.map(name=>{
+    const mReg=membersRegistry.find(r=>r.name===name);
+    const totalDep=deposits.filter(d=>d.member===name).reduce((s,d)=>s+d.amount,0);
+    const totalWdw=withdrawals.filter(w=>w.member===name).reduce((s,w)=>s+w.amount,0);
+    const depUnits=deposits.filter(d=>d.member===name).reduce((s,d)=>s+d.units,0);
+    const wdwUnits=withdrawals.filter(w=>w.member===name).reduce((s,w)=>s+w.units,0);
+    const netUnits=Math.max(depUnits-wdwUnits,0);
+    const currentValue=netUnits*nav;
+    const unrealisedGain=currentValue-(totalDep-totalWdw);
+    return{name,memberId:mReg?mReg.memberId:'—',totalDep,totalWdw,netAmount:totalDep-totalWdw,netUnits,currentValue,unrealisedGain};
+  }).sort((a,b)=>b.netUnits-a.netUnits);
+  let h='<div style="overflow-x:auto"><table><thead><tr>'
+    +'<th style="width:26px"></th><th style="width:82px">Member ID</th><th>Member</th>'
+    +'<th class="num">Net invested</th><th class="num">Net units</th>'
+    +'<th class="num">Current value</th><th class="num">Unrealised gain</th>'
+    +'</tr></thead><tbody>';
+  summary.forEach((m,i)=>{
+    const gCol=m.unrealisedGain>=0?'#3b6d11':'#a32d2d';
+    h+=`<tr style="cursor:pointer" id="orow-${i}" data-sel="0"
+      onclick="toggleOwnershipDetail(${i},'${m.name.replace(/'/g,"\\'")}',${summary.length})"
+      onmouseover="if(this.dataset.sel!=='1')this.style.background='#f4f4f2'"
+      onmouseout="if(this.dataset.sel!=='1')this.style.background=''">
+      <td style="color:#888780;font-size:10px" id="oarrow-${i}">&#9658;</td>
+      <td style="font-size:11px;font-weight:600;color:#0c447c">${m.memberId}</td>
+      <td><strong>${m.name}</strong></td>
+      <td class="num">${fmt(m.netAmount)}</td>
+      <td class="num" style="font-weight:600">${fmtU(m.netUnits)}</td>
+      <td class="num" style="color:#0c447c;font-weight:600">${fmt(m.currentValue)}</td>
+      <td class="num" style="color:${gCol};font-weight:500">${m.unrealisedGain>=0?'+':''}${fmt(m.unrealisedGain)}</td>
+    </tr>
+    <tr id="odetail-${i}" style="display:none"><td colspan="7" style="padding:0;background:#fffdf7;border-bottom:0.5px solid #d3d1c7"></td></tr>`;
+  });
+  el.innerHTML=h+'</tbody></table></div>';
+  if(selectedOwnershipMember!==null){
+    const idx=summary.findIndex(m=>m.name===selectedOwnershipMember);
+    if(idx>=0){
+      const row=document.getElementById('orow-'+idx);
+      if(row){row.dataset.sel='1';row.style.background='#faeeda';}
+      document.getElementById('oarrow-'+idx).textContent='▼';
+      injectOwnershipDetail(idx,selectedOwnershipMember);
+    }
+  }
+}
+function toggleOwnershipDetail(idx,name,total){
+  const row=document.getElementById('orow-'+idx);
+  const isSel=row.dataset.sel==='1';
+  for(let i=0;i<total;i++){
+    const r=document.getElementById('orow-'+i);const a=document.getElementById('oarrow-'+i);const d=document.getElementById('odetail-'+i);
+    if(r){r.dataset.sel='0';r.style.background='';}
+    if(a)a.textContent='▶';
+    if(d){d.style.display='none';d.cells[0].innerHTML='';}
+  }
+  if(isSel){selectedOwnershipMember=null;return;}
+  row.dataset.sel='1';row.style.background='#faeeda';
+  document.getElementById('oarrow-'+idx).textContent='▼';
+  selectedOwnershipMember=name;
+  injectOwnershipDetail(idx,name);
+}
+function injectOwnershipDetail(idx,name){
+  const detailRow=document.getElementById('odetail-'+idx);if(!detailRow)return;
+  const txns=[
+    ...deposits.filter(d=>d.member===name).map(d=>({date:d.date,type:'Subscription',amount:d.amount,nav:d.nav,units:d.units,sign:1})),
+    ...withdrawals.filter(w=>w.member===name).map(w=>({date:w.date,type:'Withdrawal',amount:w.amount,nav:w.nav,units:w.units,sign:-1}))
+  ].sort((a,b)=>a.date.localeCompare(b.date));
+  if(!txns.length){detailRow.cells[0].innerHTML='<div style="padding:10px 16px;color:#b4b2a9;font-size:12px">No transactions.</div>';detailRow.style.display='';return;}
+  let inner='<div style="padding:10px 16px 14px 28px"><div style="font-size:11px;font-weight:600;color:#888780;text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px">Transactions — '+name+'</div>'
+    +'<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr>'
+    +'<th style="text-align:left;padding:5px 6px;border-bottom:0.5px solid #d3d1c7;font-size:10px;text-transform:uppercase;color:#888780">Date</th>'
+    +'<th style="text-align:left;padding:5px 6px;border-bottom:0.5px solid #d3d1c7;font-size:10px;text-transform:uppercase;color:#888780">Type</th>'
+    +'<th style="text-align:right;padding:5px 6px;border-bottom:0.5px solid #d3d1c7;font-size:10px;text-transform:uppercase;color:#888780">Amount</th>'
+    +'<th style="text-align:right;padding:5px 6px;border-bottom:0.5px solid #d3d1c7;font-size:10px;text-transform:uppercase;color:#888780">NAV</th>'
+    +'<th style="text-align:right;padding:5px 6px;border-bottom:0.5px solid #d3d1c7;font-size:10px;text-transform:uppercase;color:#888780">Units</th>'
+    +'</tr></thead><tbody>';
+  txns.forEach(t=>{
+    const ac=t.sign===1?'#1a1a18':'#a32d2d';
+    const px=t.sign===-1?'-':'';
+    const badgeSt=t.sign===1?'background:#eaf3de;color:#27500a':'background:#fcebeb;color:#791f1f';
+    inner+=`<tr><td style="padding:5px 6px;border-bottom:0.5px solid #e8e6df">${t.date}</td>
+      <td style="padding:5px 6px;border-bottom:0.5px solid #e8e6df"><span style="display:inline-block;font-size:10px;padding:2px 7px;border-radius:6px;font-weight:600;${badgeSt}">${t.type}</span></td>
+      <td style="text-align:right;padding:5px 6px;border-bottom:0.5px solid #e8e6df;font-variant-numeric:tabular-nums;color:${ac};font-weight:500">${px}${fmt(t.amount)}</td>
+      <td style="text-align:right;padding:5px 6px;border-bottom:0.5px solid #e8e6df;font-size:11px">${getCurrency()}${t.nav.toLocaleString(undefined,{minimumFractionDigits:4,maximumFractionDigits:4})}</td>
+      <td style="text-align:right;padding:5px 6px;border-bottom:0.5px solid #e8e6df;font-variant-numeric:tabular-nums;color:${ac}">${px}${fmtU(t.units)}</td>
+    </tr>`;
+  });
+  inner+='</tbody></table></div></div>';
+  detailRow.cells[0].innerHTML=inner;
+  detailRow.style.display='';
+}
+
+/* ══════════════════════════════════════════════
+   MEMBER REGISTRY
+══════════════════════════════════════════════ */
+function generateMemberID(reg){let max=0;reg.forEach(m=>{if(m.memberId){const n=parseInt(m.memberId.replace('LMR-',''))||0;if(n>max)max=n;}});return 'LMR-'+String(max+1).padStart(3,'0');}
+function setRegFormMode(editing){
+  document.getElementById('reg-form-title').textContent=editing?'Edit member':'Member registration form';
+  document.getElementById('reg-add-btn').style.display=editing?'none':'inline-block';
+  document.getElementById('reg-update-btn').style.display=editing?'inline-block':'none';
+  document.getElementById('reg-cancel-btn').style.display=editing?'inline-block':'none';
+  if(!editing)document.getElementById('reg-edit-id').value='';
+}
+function editMemberReg(id){
+  const m=membersRegistry.find(x=>x.id===id);if(!m)return;
+  document.getElementById('reg-member-name').value=m.name;
+  document.getElementById('reg-member-date').value=m.dateJoined;
+  document.getElementById('reg-edit-id').value=id;
+  setRegFormMode(true);
+  document.getElementById('panel-membership').querySelector('.card').scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+function cancelMemberEdit(){document.getElementById('reg-member-name').value='';document.getElementById('reg-member-date').value=today;setRegFormMode(false);}
+function saveMemberEdit(){
+  const id=parseInt(document.getElementById('reg-edit-id').value);if(!id)return;
+  const name=document.getElementById('reg-member-name').value.trim();
+  const dateJoined=document.getElementById('reg-member-date').value;
+  if(!name||!dateJoined){alert('Enter name and date joined.');return;}
+  const dup=membersRegistry.find(m=>m.name.toLowerCase()===name.toLowerCase()&&m.id!==id);
+  if(dup){alert(name+' is already registered.');return;}
+  const idx=membersRegistry.findIndex(m=>m.id===id);if(idx===-1)return;
+  const old=membersRegistry[idx];
+  membersRegistry[idx]={...old,name,dateJoined};
+  membersRegistry.sort((a,b)=>a.dateJoined.localeCompare(b.dateJoined));
+  audit('Edit Member',`${old.name} → ${name}, joined ${dateJoined}`);
+  cancelMemberEdit();save();renderMemberRegistry();syncAllMemberDropdowns();
+}
+function addMemberReg(){
+  const name=document.getElementById('reg-member-name').value.trim();
+  const dateJoined=document.getElementById('reg-member-date').value;
+  if(!name||!dateJoined){alert('Enter name and date joined.');return;}
+  if(membersRegistry.find(m=>m.name.toLowerCase()===name.toLowerCase())){alert(name+' is already registered.');return;}
+  const memberId=generateMemberID(membersRegistry);
+  membersRegistry.push({name,dateJoined,id:Date.now(),memberId,active:true});
+  membersRegistry.sort((a,b)=>a.dateJoined.localeCompare(b.dateJoined));
+  document.getElementById('reg-member-name').value='';
+  audit('Add Member',`${name} (${memberId}) joined ${dateJoined}`);
+  save();renderMemberRegistry();syncAllMemberDropdowns();
+}
+function toggleMemberActive(id,checked){
+  const m=membersRegistry.find(x=>x.id===id);if(!m)return;
+  m.active=checked;
+  audit(checked?'Activate Member':'Deactivate Member',m.name);
+  save();renderMemberRegistry();syncAllMemberDropdowns();
+}
+function removeMemberReg(id){
+  if(!confirm('Remove this member? Their KYC will also be deleted.'))return;
+  const m=membersRegistry.find(x=>x.id===id);
+  if(m&&kycData[m.name]){delete kycData[m.name];audit('Delete KYC',m.name);}
+  if(m)audit('Delete Member',m.name);
+  membersRegistry=membersRegistry.filter(x=>x.id!==id);
+  save();renderMemberRegistry();syncAllMemberDropdowns();
+}
+function renderMemberRegistry(){
+  const wrap=document.getElementById('reg-member-table-wrap');if(!wrap)return;
+  if(!membersRegistry.length){wrap.innerHTML='<div class="empty">No members registered yet.</div>';return;}
+  let h='<div style="overflow-x:auto"><table><thead><tr>'
+    +'<th style="width:82px">Member ID</th><th>Name</th><th style="width:108px">Date joined</th>'
+    +'<th style="width:60px;text-align:center">Active</th><th style="width:44px"></th>'
+    +'</tr></thead><tbody>';
+  membersRegistry.forEach(m=>{
+    const active=m.active!==false;
+    h+=`<tr style="cursor:pointer;${active?'':'color:#aaa9a4'}" onclick="editMemberReg(${m.id})" onmouseover="this.style.background='#f4f4f2'" onmouseout="this.style.background=''">
+      <td style="font-size:11px;font-weight:600;color:${active?'#0c447c':'#b4b2a9'}">${m.memberId||'—'}</td>
+      <td><span style="font-weight:600;${active?'':'text-decoration:line-through'}">${m.name}</span></td>
+      <td>${m.dateJoined}</td>
+      <td style="text-align:center" onclick="event.stopPropagation()">
+        <input type="checkbox" ${active?'checked':''} onchange="toggleMemberActive(${m.id},this.checked)" style="width:auto;cursor:pointer;accent-color:#1d6f42"/>
+      </td>
+      <td onclick="event.stopPropagation()"><button class="btn-danger" onclick="removeMemberReg(${m.id})" style="padding:3px 7px;font-size:11px">&#128465;</button></td>
+    </tr>`;
+  });
+  wrap.innerHTML=h+'</tbody></table></div>';
+}
+function updateMemberDatalist(){
+  const regNames=membersRegistry.filter(m=>m.active!==false).map(m=>m.name);
+  const depNames=[...new Set(deposits.map(d=>d.member))].filter(n=>!regNames.includes(n));
+  const all=[...new Set([...regNames,...depNames])];
+  const dl=document.getElementById('member-list');if(dl)dl.innerHTML=all.map(n=>`<option value="${n}">`).join('');
+}
+function syncAllMemberDropdowns(){
+  const regNames=membersRegistry.filter(m=>m.active!==false).map(m=>m.name);
+  const depNames=[...new Set(deposits.map(d=>d.member))].filter(n=>!regNames.includes(n));
+  const all=[...new Set([...regNames,...depNames])];
+  const dl=document.getElementById('member-list');if(dl)dl.innerHTML=all.map(n=>`<option value="${n}">`).join('');
+  const dl2=document.getElementById('member-list-wdw');if(dl2)dl2.innerHTML=all.map(n=>`<option value="${n}">`).join('');
+  const kycSel=document.getElementById('kyc-member-select');
+  if(kycSel){const cur=kycSel.value;kycSel.innerHTML='<option value="">— Select a member —</option>';all.forEach(n=>{const opt=document.createElement('option');opt.value=n;opt.textContent=n;if(n===cur)opt.selected=true;kycSel.appendChild(opt);});}
+}
+
+/* ══════════════════════════════════════════════
+   NAV VALUATION
+══════════════════════════════════════════════ */
+function previewNewNAV(){
+  const pv=parseFloat(document.getElementById('nav-val-portfolio-raw').value)||0;
+  const units=getTotalUnits();
+  const preview=document.getElementById('nav-preview');
+  if(!pv||!units){if(preview)preview.textContent='Enter portfolio value to preview new NAV.';return;}
+  const newNav=pv/units;const cur=getCurrentNAV();const diff=newNav-cur;const pct=(diff/cur*100).toFixed(2);const col=diff>=0?'#3b6d11':'#a32d2d';
+  if(preview)preview.innerHTML=`New NAV: <strong style="color:${col}">${getCurrency()}${newNav.toLocaleString(undefined,{minimumFractionDigits:4,maximumFractionDigits:4})}</strong> &nbsp;|&nbsp; Total units: <strong>${fmtU(units)}</strong> &nbsp;|&nbsp; Change: <strong style="color:${col}">${diff>=0?'+':''}${getCurrency()}${Math.abs(diff).toFixed(4)} (${diff>=0?'+':''}${pct}%)</strong>`;
+}
+function recordNAVValuation(){
+  const date=document.getElementById('nav-val-date').value;
+  forceRaw('nav-val-portfolio','nav-val-portfolio-raw');
+  const pv=parseFloat(document.getElementById('nav-val-portfolio-raw').value)||0;
+  const notes=document.getElementById('nav-val-notes').value.trim();
+  if(!date){alert('Select a valuation date.');return;}
+  if(!pv||pv<=0){alert('Enter a valid portfolio value.');return;}
+  const units=getTotalUnits();
+  if(!units){alert('No units outstanding — record deposits first.');return;}
+  const nav=pv/units;
+  navValuations.push({date,portfolioValue:pv,totalUnits:units,nav,notes,id:Date.now()});
+  navValuations.sort((a,b)=>a.date.localeCompare(b.date));
+  // FIX #1: update init-nav to reflect latest valuation for display, but getNavOnDate() is the canonical source
+  document.getElementById('init-nav').value=nav.toFixed(4);
+  updateNavDisplay();
+  audit('NAV Valuation',`Date ${date}: portfolio ${fmt(pv)}, ${fmtU(units)} units → NAV ${getCurrency()}${nav.toFixed(4)}`);
+  document.getElementById('nav-val-date').value=today;
+  const pve=document.getElementById('nav-val-portfolio');if(pve){pve.value='';pve.classList.remove('input-formatted');}
+  document.getElementById('nav-val-portfolio-raw').value='';
+  document.getElementById('nav-val-notes').value='';
+  const np=document.getElementById('nav-preview');if(np)np.textContent='';
+  save();renderNAVHistory();updateProfitUnitSummary();renderOverview();
+}
+function removeNAVValuation(id){
+  if(!confirm('Remove this valuation record?'))return;
+  const v=navValuations.find(x=>x.id===id);if(v)audit('Delete NAV Valuation',`Date ${v.date}, NAV ${getCurrency()}${v.nav.toFixed(4)}`);
+  navValuations=navValuations.filter(x=>x.id!==id);
+  const nav=getCurrentNAV();
+  document.getElementById('init-nav').value=nav.toFixed(4);
+  updateNavDisplay();save();renderNAVHistory();
+}
+function renderNAVHistory(){
+  const wrap=document.getElementById('nav-history-wrap');if(!wrap)return;
+  const initNav=getInitialNav();
+  if(!navValuations.length){
+    wrap.innerHTML=`<div class="hint" style="padding:10px 0">No valuations recorded. Using initial NAV: <strong>${getCurrency()}${initNav.toLocaleString(undefined,{minimumFractionDigits:4,maximumFractionDigits:4})}</strong></div>`;
+    return;
+  }
+  let h='<div style="overflow-x:auto"><table><thead><tr>'
+    +'<th style="width:92px">Date</th><th class="num">Portfolio value</th><th class="num">Total units</th>'
+    +'<th class="num" style="width:150px">NAV per unit</th><th class="num" style="width:80px">Change</th>'
+    +'<th>Notes</th><th style="width:44px"></th></tr></thead><tbody>';
+  navValuations.forEach((v,i)=>{
+    const prevNav=i===0?initNav:navValuations[i-1].nav;
+    const change=v.nav-prevNav;const changePct=(change/prevNav*100).toFixed(2);const col=change>=0?'#3b6d11':'#a32d2d';
+    h+=`<tr>
+      <td>${v.date}</td><td class="num">${fmt(v.portfolioValue)}</td><td class="num">${fmtU(v.totalUnits)}</td>
+      <td class="num" style="font-weight:600;color:#0c447c">${getCurrency()}${v.nav.toLocaleString(undefined,{minimumFractionDigits:4,maximumFractionDigits:4})}</td>
+      <td class="num" style="color:${col};font-size:12px">${change>=0?'+':''}${changePct}%</td>
+      <td style="font-size:12px">${v.notes||'—'}</td>
+      <td><button class="btn-danger" onclick="removeNAVValuation(${v.id})" style="padding:3px 7px;font-size:11px">&#128465;</button></td>
+    </tr>`;
+  });
+  wrap.innerHTML=h+'</tbody></table></div>';
+}
+function updateProfitUnitSummary(){
+  const hint=document.getElementById('profit-unit-summary-hint');if(!hint)return;
+  const units=getTotalUnits();const nav=getCurrentNAV();
+  hint.innerHTML=`Current NAV: <strong>${getCurrency()}${nav.toLocaleString(undefined,{minimumFractionDigits:4,maximumFractionDigits:4})}</strong> &nbsp;|&nbsp; Total units: <strong>${fmtU(units)}</strong> &nbsp;|&nbsp; Implied portfolio value: <strong>${fmt(units*nav)}</strong>`;
+}
+
+/* ══════════════════════════════════════════════
+   PROFIT DISTRIBUTION (FIX #3 source field)
+══════════════════════════════════════════════ */
+function getMemberSummary(){
+  const map={};
+  deposits.forEach(d=>{
+    if(!map[d.member])map[d.member]={member:d.member,totalAmount:0,totalUnits:0,deposits:[]};
+    map[d.member].totalAmount+=d.amount;map[d.member].totalUnits+=d.units;map[d.member].deposits.push(d);
+  });
+  return Object.values(map);
+}
+function calcAndSaveProfit(){
+  const label=document.getElementById('profit-label').value.trim()||('Round '+(profitRounds.length+1));
+  const date=document.getElementById('profit-date').value||today;
+  const source=document.getElementById('profit-source').value;
+  forceRaw('profit-gross','profit-gross-raw');forceRaw('profit-expenses','profit-expenses-raw');
+  const gross=getRaw('profit-gross-raw');const expenses=getRaw('profit-expenses-raw');const net=Math.max(gross-expenses,0);
+  if(!deposits.length){document.getElementById('profit-result').innerHTML='<div class="empty">Add deposits first.</div>';return;}
+  if(gross<=0){document.getElementById('profit-result').innerHTML='<div class="empty">Enter a gross profit greater than zero.</div>';return;}
+  // FIX #3: lock-in gate
+  const lockEnd=getLockInEndDate();
+  if(lockEnd&&date<lockEnd){
+    const lyrs=getLockInYears();
+    if(!confirm(`LOCK-IN PERIOD WARNING: The ${lyrs}-year lock-in period ends on ${lockEnd}. Distributing profit before this date goes against the agreed fund rules.\n\nThis override will be recorded in the audit log. Continue?`))return;
+    audit('Lock-in Override',`Profit round "${label}" distributed on ${date}, before lock-in end ${lockEnd}`);
+  }
+  const ms=getMemberSummary();
+  const memberUnits=ms.map(m=>{
+    const du=deposits.filter(d=>d.member===m.member&&d.date<=date).reduce((s,d)=>s+d.units,0);
+    const wu=withdrawals.filter(w=>w.member===m.member&&w.date<=date).reduce((s,w)=>s+w.units,0);
+    return{member:m.member,totalAmount:m.totalAmount,netUnits:Math.max(du-wu,0)};
+  }).filter(m=>m.netUnits>0);
+  const totalUnits=memberUnits.reduce((s,m)=>s+m.netUnits,0);
+  const currentNAV=getCurrentNAV();
+  const payouts=memberUnits.map(m=>{
+    const share=totalUnits>0?m.netUnits/totalUnits:0;
+    return{member:m.member,totalAmount:m.totalAmount,units:m.netUnits,share,payout:net*share};
+  }).sort((a,b)=>b.units-a.units);
+  profitRounds.push({label,date,gross,expenses,net,source,payouts,navAtDate:currentNAV,totalUnits,id:Date.now()});
+  document.getElementById('profit-label').value='';
+  ['profit-gross','profit-expenses'].forEach(id=>{const el=document.getElementById(id);el.value='';el.classList.remove('input-formatted');});
+  document.getElementById('profit-gross-raw').value='';document.getElementById('profit-expenses-raw').value='';
+  audit('Add Profit Round',`"${label}" on ${date}: gross ${fmt(gross)}, expenses ${fmt(expenses)}, net ${fmt(net)}, source: ${source}`);
+  save();renderDistribution(profitRounds[profitRounds.length-1]);renderProfitHistory();
+  if(selectedMember)renderMemberDetail(selectedMember);
+}
+function renderDistribution(r){
+  const navLine=r.navAtDate?` &nbsp;<span style="font-size:11px;color:#888780">NAV: ${getCurrency()}${r.navAtDate.toLocaleString(undefined,{minimumFractionDigits:4,maximumFractionDigits:4})}</span>`:'';
+  const srcBadge=r.source?`<span class="tag tag-blue" style="font-size:10px;margin-left:8px">${r.source}</span>`:'';
+  let h=`<div class="card"><div class="card-title">Distribution — ${r.label} &nbsp;<span style="font-weight:400;text-transform:none;letter-spacing:0;color:#888780;font-size:11px">${r.date}</span>${navLine}${srcBadge}</div>
+    <div class="metrics">
+      <div class="metric"><div class="metric-label">Gross profit</div><div class="metric-val">${fmt(r.gross)}</div></div>
+      <div class="metric"><div class="metric-label">Expenses</div><div class="metric-val">${fmt(r.expenses)}</div></div>
+      <div class="metric"><div class="metric-label">Net distributable</div><div class="metric-val" style="color:#3b6d11">${fmt(r.net)}</div></div>
+      <div class="metric"><div class="metric-label">Total units</div><div class="metric-val">${r.totalUnits?fmtU(r.totalUnits):'—'}</div></div>
+    </div>
+    <div style="overflow-x:auto"><table><thead><tr><th>Member</th><th class="num">Net units</th><th class="num">Share</th><th class="num">Payout</th><th class="num">ROI this round</th></tr></thead><tbody>`;
+  r.payouts.forEach(p=>{
+    const badge=p.share>0.3?'tag-blue':p.share>0.15?'tag-purple':'tag-amber';
+    const roi=p.totalAmount>0?((p.payout/p.totalAmount)*100).toFixed(2)+'%':'—';
+    h+=`<tr><td><strong>${p.member}</strong></td><td class="num">${fmtU(p.units)}</td><td class="num"><span class="tag ${badge}">${(p.share*100).toFixed(2)}%</span></td><td class="num" style="color:#3b6d11;font-weight:600">${fmt(p.payout)}</td><td class="num">${roi}</td></tr>`;
+  });
+  document.getElementById('profit-result').innerHTML=h+'</tbody></table></div></div>';
+}
+function renderProfitHistory(){
+  if(!profitRounds.length){document.getElementById('profit-history-card').style.display='none';return;}
+  document.getElementById('profit-history-card').style.display='block';
+  let tG=0,tE=0,tN=0;
+  let h='<div style="overflow-x:auto"><table><thead><tr><th>Round</th><th>Date</th><th>Source</th><th class="num">Gross</th><th class="num">Expenses</th><th class="num">Net paid</th><th style="width:44px"></th></tr></thead><tbody>';
+  profitRounds.forEach(r=>{
+    tG+=r.gross;tE+=r.expenses;tN+=r.net;
+    h+=`<tr class="round-row" id="rrow-${r.id}" onclick="selectRound(${r.id},this)">
+      <td><strong>${r.label}</strong></td><td>${r.date}</td>
+      <td><span style="font-size:11px;color:#5f5e5a">${r.source||'—'}</span></td>
+      <td class="num">${fmt(r.gross)}</td><td class="num">${fmt(r.expenses)}</td>
+      <td class="num" style="color:#3b6d11">${fmt(r.net)}</td>
+      <td onclick="event.stopPropagation()"><button class="btn-danger" onclick="deleteProfitRound(${r.id})" style="padding:3px 7px;font-size:11px">&#128465;</button></td>
+    </tr>`;
+  });
+  h+=`<tr class="tfoot-row"><td colspan="3">Total</td><td class="num">${fmt(tG)}</td><td class="num">${fmt(tE)}</td><td class="num" style="color:#3b6d11">${fmt(tN)}</td><td></td></tr>`;
+  document.getElementById('profit-history').innerHTML=h+'</tbody></table></div>';
+}
+function selectRound(id,row){
+  document.querySelectorAll('.round-row').forEach(r=>r.classList.remove('sel-round'));
+  row.classList.add('sel-round');
+  const r=profitRounds.find(x=>x.id===id);
+  if(r){renderDistribution(r);document.getElementById('profit-result').scrollIntoView({behavior:'smooth',block:'nearest'});}
+}
+function deleteProfitRound(id){
+  if(!confirm('Remove this profit round?'))return;
+  const r=profitRounds.find(x=>x.id===id);
+  if(r)audit('Delete Profit Round',`"${r.label}" on ${r.date}`);
+  profitRounds=profitRounds.filter(x=>x.id!==id);
+  save();renderProfitHistory();if(selectedMember)renderMemberDetail(selectedMember);
+}
+
+/* ══════════════════════════════════════════════
+   INVESTMENT INCOME (Priority #8 — fully built)
+══════════════════════════════════════════════ */
+function syncIncomeAssetDropdown(){
+  const sel=document.getElementById('income-asset-id');if(!sel)return;
+  const cur=sel.value;
+  sel.innerHTML='<option value="">— Select asset (optional) —</option>';
+  portfolioItems.forEach(p=>{const opt=document.createElement('option');opt.value=p.assetId;opt.textContent=`${p.assetId} — ${getAssetLabelFull(p.assetType)}`;if(p.assetId===cur)opt.selected=true;sel.appendChild(opt);});
+}
+function setIncomeFormMode(editing){
+  document.getElementById('income-form-title').textContent=editing?'Edit income record':'Record investment income';
+  document.getElementById('income-add-btn').style.display=editing?'none':'inline-block';
+  document.getElementById('income-update-btn').style.display=editing?'inline-block':'none';
+  document.getElementById('income-cancel-btn').style.display=editing?'inline-block':'none';
+  if(!editing)document.getElementById('income-edit-id').value='';
+}
+function addIncome(){
+  const date=document.getElementById('income-date').value;
+  const assetId=document.getElementById('income-asset-id').value;
+  const type=document.getElementById('income-type').value;
+  forceRaw('income-amount','income-amount-raw');
+  const amount=getRaw('income-amount-raw');
+  const notes=document.getElementById('income-notes').value.trim();
+  if(!date){alert('Select a date.');return;}
+  if(!amount||amount<=0){alert('Enter a valid amount.');return;}
+  incomeRecords.push({date,assetId,type,amount,notes,id:Date.now()});
+  incomeRecords.sort((a,b)=>a.date.localeCompare(b.date));
+  audit('Add Income',`${type}: ${fmt(amount)} on ${date}${assetId?' for '+assetId:''}`);
+  document.getElementById('income-date').value=today;
+  document.getElementById('income-asset-id').value='';
+  const ia=document.getElementById('income-amount');ia.value='';ia.classList.remove('input-formatted');
+  document.getElementById('income-amount-raw').value='';
+  document.getElementById('income-notes').value='';
+  save();renderIncomeLedger();renderOverview();
+}
+function editIncome(id){
+  const r=incomeRecords.find(x=>x.id===id);if(!r)return;
+  document.getElementById('income-date').value=r.date;
+  document.getElementById('income-asset-id').value=r.assetId||'';
+  document.getElementById('income-type').value=r.type;
+  const amtEl=document.getElementById('income-amount');
+  document.getElementById('income-amount-raw').value=r.amount;
+  amtEl.value=r.amount.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});amtEl.classList.add('input-formatted');
+  document.getElementById('income-notes').value=r.notes||'';
+  document.getElementById('income-edit-id').value=id;
+  setIncomeFormMode(true);
+  document.getElementById('panel-port-income').querySelector('.card').scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+function saveIncomeEdit(){
+  const id=parseInt(document.getElementById('income-edit-id').value);if(!id)return;
+  const date=document.getElementById('income-date').value;
+  const assetId=document.getElementById('income-asset-id').value;
+  const type=document.getElementById('income-type').value;
+  forceRaw('income-amount','income-amount-raw');
+  const amount=getRaw('income-amount-raw');
+  const notes=document.getElementById('income-notes').value.trim();
+  if(!date||!amount){alert('Complete required fields.');return;}
+  const idx=incomeRecords.findIndex(x=>x.id===id);if(idx===-1)return;
+  const old=incomeRecords[idx];
+  incomeRecords[idx]={...old,date,assetId,type,amount,notes};
+  incomeRecords.sort((a,b)=>a.date.localeCompare(b.date));
+  audit('Edit Income',`${type}: ${fmt(old.amount)} → ${fmt(amount)} on ${date}`);
+  cancelIncomeEdit();save();renderIncomeLedger();renderOverview();
+}
+function cancelIncomeEdit(){
+  document.getElementById('income-date').value=today;
+  document.getElementById('income-asset-id').value='';
+  const ia=document.getElementById('income-amount');ia.value='';ia.classList.remove('input-formatted');
+  document.getElementById('income-amount-raw').value='';
+  document.getElementById('income-notes').value='';
+  setIncomeFormMode(false);
+}
+function removeIncome(id){
+  if(!confirm('Remove this income record?'))return;
+  const r=incomeRecords.find(x=>x.id===id);
+  if(r)audit('Delete Income',`${r.type}: ${fmt(r.amount)} on ${r.date}`);
+  incomeRecords=incomeRecords.filter(x=>x.id!==id);
+  save();renderIncomeLedger();renderOverview();
+}
+const INCOME_TYPE_COLORS={Dividend:'background:#e6f1fb;color:#0c447c',Interest:'background:#eeedfe;color:#3c3489',Coupon:'background:#eaf3de;color:#27500a','Rental income':'background:#faeeda;color:#633806',Other:'background:#f4f4f2;color:#5f5e5a'};
+function renderIncomeLedger(){
+  const wrap=document.getElementById('income-ledger-wrap');if(!wrap)return;
+  if(!incomeRecords.length){wrap.innerHTML='<div class="empty">No income recorded yet.</div>';return;}
+  const editingId=parseInt(document.getElementById('income-edit-id').value)||0;
+  let total=0;
+  let h='<div style="overflow-x:auto"><table><thead><tr>'
+    +'<th style="width:90px">Date</th><th style="width:120px">Type</th><th style="width:150px">Asset ID</th>'
+    +'<th class="num" style="width:130px">Amount</th><th>Notes</th><th style="width:44px"></th>'
+    +'</tr></thead><tbody>';
+  incomeRecords.forEach(r=>{
+    total+=r.amount;
+    const isEd=r.id===editingId;
+    const st=INCOME_TYPE_COLORS[r.type]||INCOME_TYPE_COLORS.Other;
+    h+=`<tr style="cursor:pointer;${isEd?'background:#eaf6ef':''}" onclick="editIncome(${r.id})"
+      onmouseover="this.style.background='${isEd?'#d6eedf':'#f4f4f2'}'"
+      onmouseout="this.style.background='${isEd?'#eaf6ef':''}'">
+      <td>${r.date}</td>
+      <td><span class="income-type-badge" style="${st}">${r.type}</span></td>
+      <td style="font-size:11px;color:#0c447c">${r.assetId||'—'}</td>
+      <td class="num" style="font-weight:500;color:#3b6d11">${fmt(r.amount)}</td>
+      <td style="font-size:12px;white-space:normal">${r.notes||'—'}</td>
+      <td onclick="event.stopPropagation()"><button class="btn-danger" onclick="removeIncome(${r.id})" style="padding:3px 7px;font-size:11px">&#128465;</button></td>
+    </tr>`;
+  });
+  h+=`<tr class="tfoot-row"><td colspan="3">Total income</td><td class="num" style="color:#3b6d11">${fmt(total)}</td><td></td><td></td></tr>`;
+  wrap.innerHTML=h+'</tbody></table></div>';
+}
+
+/* ══════════════════════════════════════════════
+   BROKER & ASSET TYPE REGISTRIES
+══════════════════════════════════════════════ */
+function setBrokerFormMode(editing){
+  document.getElementById('broker-form-title').textContent=editing?'Edit broker':'Add broker';
+  document.getElementById('broker-add-btn').style.display=editing?'none':'inline-block';
+  document.getElementById('broker-update-btn').style.display=editing?'inline-block':'none';
+  document.getElementById('broker-cancel-btn').style.display=editing?'inline-block':'none';
+  if(!editing)document.getElementById('broker-edit-id').value='';
+}
+function addBroker(){
+  const name=document.getElementById('broker-name').value.trim();
+  const code=document.getElementById('broker-code').value.trim().toUpperCase();
+  const note=document.getElementById('broker-note').value.trim();
+  if(!name||!code){alert('Enter broker name and code.');return;}
+  if(brokerRegistry.find(b=>b.code===code)){alert('A broker with that code already exists.');return;}
+  brokerRegistry.push({name,code,note,id:Date.now()});
+  brokerRegistry.sort((a,b)=>a.name.localeCompare(b.name));
+  document.getElementById('broker-name').value='';document.getElementById('broker-code').value='';document.getElementById('broker-note').value='';
+  audit('Add Broker',`${name} (${code})`);
+  save();renderBrokerRegister();syncPortfolioDropdowns();
+}
+function editBroker(id){
+  const b=brokerRegistry.find(x=>x.id===id);if(!b)return;
+  document.getElementById('broker-name').value=b.name;document.getElementById('broker-code').value=b.code;document.getElementById('broker-note').value=b.note||'';
+  document.getElementById('broker-edit-id').value=id;setBrokerFormMode(true);
+  document.getElementById('settings-brokers').querySelector('.card').scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+function saveBrokerEdit(){
+  const id=parseInt(document.getElementById('broker-edit-id').value);if(!id)return;
+  const name=document.getElementById('broker-name').value.trim();const code=document.getElementById('broker-code').value.trim().toUpperCase();const note=document.getElementById('broker-note').value.trim();
+  if(!name||!code){alert('Broker name and code are required.');return;}
+  const dup=brokerRegistry.find(b=>b.code===code&&b.id!==id);if(dup){alert('Another broker with that code exists.');return;}
+  const idx=brokerRegistry.findIndex(x=>x.id===id);if(idx===-1)return;
+  const old=brokerRegistry[idx];
+  brokerRegistry[idx]={...old,name,code,note};brokerRegistry.sort((a,b)=>a.name.localeCompare(b.name));
+  audit('Edit Broker',`${old.name} → ${name}`);
+  cancelBrokerEdit();save();renderBrokerRegister();syncPortfolioDropdowns();
+}
+function cancelBrokerEdit(){document.getElementById('broker-name').value='';document.getElementById('broker-code').value='';document.getElementById('broker-note').value='';setBrokerFormMode(false);}
+function removeBroker(id){
+  if(!confirm('Remove this broker?'))return;
+  const b=brokerRegistry.find(x=>x.id===id);if(b)audit('Delete Broker',b.name);
+  brokerRegistry=brokerRegistry.filter(x=>x.id!==id);save();renderBrokerRegister();syncPortfolioDropdowns();
+}
+function renderBrokerRegister(){
+  const wrap=document.getElementById('broker-register-wrap');if(!wrap)return;
+  if(!brokerRegistry.length){wrap.innerHTML='<div class="empty">No brokers registered yet.</div>';return;}
+  let h='<div style="overflow-x:auto"><table><thead><tr><th style="width:36px">S/N</th><th>Broker name</th><th style="width:90px">Code</th><th>Note</th><th style="width:44px"></th></tr></thead><tbody>';
+  brokerRegistry.forEach((b,i)=>{
+    h+=`<tr style="cursor:pointer" onclick="editBroker(${b.id})" onmouseover="this.style.background='#f4f4f2'" onmouseout="this.style.background=''">
+      <td style="color:#888780">${i+1}</td><td><strong>${b.name}</strong></td>
+      <td style="font-size:11px;font-weight:600;color:#0c447c">${b.code}</td><td>${b.note||'—'}</td>
+      <td onclick="event.stopPropagation()"><button class="btn-danger" onclick="removeBroker(${b.id})" style="padding:3px 7px;font-size:11px">&#128465;</button></td>
+    </tr>`;
+  });
+  wrap.innerHTML=h+'</tbody></table></div>';
+}
+function setAssetTypeFormMode(editing){
+  document.getElementById('assettype-form-title').textContent=editing?'Edit asset type':'Add asset type';
+  document.getElementById('assettype-add-btn').style.display=editing?'none':'inline-block';
+  document.getElementById('assettype-update-btn').style.display=editing?'inline-block':'none';
+  document.getElementById('assettype-cancel-btn').style.display=editing?'inline-block':'none';
+  if(!editing)document.getElementById('assettype-edit-id').value='';
+}
+function addAssetType(){
+  const name=document.getElementById('assettype-name').value.trim();const code=document.getElementById('assettype-code').value.trim().toUpperCase();const note=document.getElementById('assettype-note').value.trim();
+  if(!name||!code){alert('Enter asset name and code.');return;}
+  if(assetTypeRegistry.find(a=>a.code===code)){alert('An asset type with that code already exists.');return;}
+  assetTypeRegistry.push({name,code,note,id:Date.now()});assetTypeRegistry.sort((a,b)=>a.name.localeCompare(b.name));
+  document.getElementById('assettype-name').value='';document.getElementById('assettype-code').value='';document.getElementById('assettype-note').value='';
+  audit('Add Asset Type',`${name} (${code})`);
+  save();renderAssetTypeRegister();syncPortfolioDropdowns();
+}
+function editAssetType(id){
+  const a=assetTypeRegistry.find(x=>x.id===id);if(!a)return;
+  document.getElementById('assettype-name').value=a.name;document.getElementById('assettype-code').value=a.code;document.getElementById('assettype-note').value=a.note||'';
+  document.getElementById('assettype-edit-id').value=id;setAssetTypeFormMode(true);
+  document.getElementById('settings-asset-types').querySelector('.card').scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+function saveAssetTypeEdit(){
+  const id=parseInt(document.getElementById('assettype-edit-id').value);if(!id)return;
+  const name=document.getElementById('assettype-name').value.trim();const code=document.getElementById('assettype-code').value.trim().toUpperCase();const note=document.getElementById('assettype-note').value.trim();
+  if(!name||!code){alert('Asset name and code are required.');return;}
+  const dup=assetTypeRegistry.find(a=>a.code===code&&a.id!==id);if(dup){alert('Another asset type with that code exists.');return;}
+  const idx=assetTypeRegistry.findIndex(x=>x.id===id);if(idx===-1)return;
+  const old=assetTypeRegistry[idx];
+  assetTypeRegistry[idx]={...old,name,code,note};assetTypeRegistry.sort((a,b)=>a.name.localeCompare(b.name));
+  audit('Edit Asset Type',`${old.name} → ${name}`);
+  cancelAssetTypeEdit();save();renderAssetTypeRegister();syncPortfolioDropdowns();
+}
+function cancelAssetTypeEdit(){document.getElementById('assettype-name').value='';document.getElementById('assettype-code').value='';document.getElementById('assettype-note').value='';setAssetTypeFormMode(false);}
+function removeAssetType(id){
+  if(!confirm('Remove this asset type?'))return;
+  const a=assetTypeRegistry.find(x=>x.id===id);if(a)audit('Delete Asset Type',a.name);
+  assetTypeRegistry=assetTypeRegistry.filter(x=>x.id!==id);save();renderAssetTypeRegister();syncPortfolioDropdowns();
+}
+function renderAssetTypeRegister(){
+  const wrap=document.getElementById('assettype-register-wrap');if(!wrap)return;
+  if(!assetTypeRegistry.length){wrap.innerHTML='<div class="empty">No asset types registered yet.</div>';return;}
+  let h='<div style="overflow-x:auto"><table><thead><tr><th style="width:36px">S/N</th><th>Asset name</th><th style="width:90px">Code</th><th>Note</th><th style="width:44px"></th></tr></thead><tbody>';
+  assetTypeRegistry.forEach((a,i)=>{
+    h+=`<tr style="cursor:pointer" onclick="editAssetType(${a.id})" onmouseover="this.style.background='#f4f4f2'" onmouseout="this.style.background=''">
+      <td style="color:#888780">${i+1}</td><td><strong>${a.name}</strong></td>
+      <td style="font-size:11px;font-weight:600;color:#3c3489">${a.code}</td><td>${a.note||'—'}</td>
+      <td onclick="event.stopPropagation()"><button class="btn-danger" onclick="removeAssetType(${a.id})" style="padding:3px 7px;font-size:11px">&#128465;</button></td>
+    </tr>`;
+  });
+  wrap.innerHTML=h+'</tbody></table></div>';
+}
+function getAssetLabelFull(code){const a=assetTypeRegistry.find(x=>x.code===code);return a?a.name:(code||'—');}
+
+/* ══════════════════════════════════════════════
+   PORTFOLIO REGISTER & PURCHASES
+══════════════════════════════════════════════ */
+function syncPortfolioDropdowns(){
+  const portType=document.getElementById('port-asset-type');
+  if(portType){const cur=portType.value;portType.innerHTML='<option value="">— Select asset type —</option>';assetTypeRegistry.forEach(a=>{const opt=document.createElement('option');opt.value=a.code;opt.textContent=`${a.name} (${a.code})`;if(a.code===cur)opt.selected=true;portType.appendChild(opt);});}
+  const portBroker=document.getElementById('port-broker');
+  if(portBroker){const cur=portBroker.value;portBroker.innerHTML='<option value="">— Select broker —</option>';brokerRegistry.forEach(b=>{const opt=document.createElement('option');opt.value=b.name;opt.textContent=`${b.name} (${b.code})`;if(b.name===cur)opt.selected=true;portBroker.appendChild(opt);});}
+  ['port-filter-type','purch-filter-type'].forEach(selId=>{
+    const sel=document.getElementById(selId);if(!sel)return;
+    const cur=sel.value;sel.innerHTML='<option value="">All asset types</option>';
+    assetTypeRegistry.forEach(a=>{const opt=document.createElement('option');opt.value=a.code;opt.textContent=a.name;if(a.code===cur)opt.selected=true;sel.appendChild(opt);});
+  });
+  renderPortfolioRegister();syncPurchaseAssetDropdown();syncIncomeAssetDropdown();
+}
+function generateAssetId(assetTypeCode,brokerName){
+  const brokerRec=brokerRegistry.find(b=>b.name===brokerName);
+  const brokerCode=brokerRec?brokerRec.code:'LMR';
+  const prefix=`${brokerCode}/${assetTypeCode}`;
+  const existing=portfolioItems.filter(p=>p.assetId&&p.assetId.startsWith(prefix+'/'));
+  const nums=existing.map(p=>{const m=p.assetId.match(/INV(\d+)$/);return m?parseInt(m[1]):0;});
+  const next=(nums.length?Math.max(...nums):0)+1;
+  return `${prefix}/INV${String(next).padStart(3,'0')}`;
+}
+function updatePortAssetId(){
+  const typeCode=document.getElementById('port-asset-type').value;
+  const brokerName=document.getElementById('port-broker').value;
+  const idEl=document.getElementById('port-asset-id');
+  if(!typeCode||!brokerName){idEl.value='';return;}
+  const editId=parseInt(document.getElementById('port-edit-id').value)||0;
+  if(editId){const item=portfolioItems.find(p=>p.id===editId);if(item&&item.assetType===typeCode&&item.broker===brokerName){idEl.value=item.assetId;return;}}
+  idEl.value=generateAssetId(typeCode,brokerName);
+}
+function setPortFormMode(editing){
+  document.getElementById('port-form-title').textContent=editing?'Edit investment':'New investment';
+  document.getElementById('port-add-btn').style.display=editing?'none':'inline-block';
+  document.getElementById('port-update-btn').style.display=editing?'inline-block':'none';
+  document.getElementById('port-cancel-btn').style.display=editing?'inline-block':'none';
+  if(!editing)document.getElementById('port-edit-id').value='';
+}
+function addPortfolioItem(){
+  const date=document.getElementById('port-date').value;const assetType=document.getElementById('port-asset-type').value;const assetId=document.getElementById('port-asset-id').value.trim();const broker=document.getElementById('port-broker').value.trim();const description=document.getElementById('port-description').value.trim();
+  if(!date||!assetType){alert('Date and asset type are required.');return;}
+  portfolioItems.push({date,assetType,assetId,broker,description,id:Date.now()});
+  portfolioItems.sort((a,b)=>a.date.localeCompare(b.date));
+  audit('Add Portfolio Item',`${assetId} (${getAssetLabelFull(assetType)}) via ${broker||'—'}`);
+  document.getElementById('port-date').value=today;document.getElementById('port-asset-type').value='';document.getElementById('port-asset-id').value='';document.getElementById('port-broker').value='';document.getElementById('port-description').value='';
+  save();renderPortfolioRegister();syncPurchaseAssetDropdown();syncIncomeAssetDropdown();
+}
+function editPortfolioItem(id){
+  const p=portfolioItems.find(x=>x.id===id);if(!p)return;
+  document.getElementById('port-date').value=p.date;document.getElementById('port-asset-type').value=p.assetType;document.getElementById('port-asset-id').value=p.assetId;document.getElementById('port-broker').value=p.broker||'';document.getElementById('port-description').value=p.description||'';document.getElementById('port-edit-id').value=id;
+  setPortFormMode(true);document.getElementById('panel-port-register').querySelector('.card').scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+function savePortfolioEdit(){
+  const id=parseInt(document.getElementById('port-edit-id').value);if(!id)return;
+  const date=document.getElementById('port-date').value;const assetType=document.getElementById('port-asset-type').value;const assetId=document.getElementById('port-asset-id').value.trim();const broker=document.getElementById('port-broker').value.trim();const description=document.getElementById('port-description').value.trim();
+  if(!date||!assetType){alert('Complete required fields.');return;}
+  const idx=portfolioItems.findIndex(x=>x.id===id);if(idx===-1)return;
+  const old=portfolioItems[idx];
+  portfolioItems[idx]={...old,date,assetType,assetId,broker,description};
+  portfolioItems.sort((a,b)=>a.date.localeCompare(b.date));
+  audit('Edit Portfolio Item',`${old.assetId} → ${assetId}`);
+  cancelPortfolioEdit();save();renderPortfolioRegister();syncPurchaseAssetDropdown();syncIncomeAssetDropdown();
+}
+function cancelPortfolioEdit(){
+  document.getElementById('port-date').value=today;document.getElementById('port-asset-type').value='';document.getElementById('port-asset-id').value='';document.getElementById('port-broker').value='';document.getElementById('port-description').value='';setPortFormMode(false);
+}
+function removePortfolioItem(id){
+  const item=portfolioItems.find(p=>p.id===id);
+  const hasPurchases=item&&purchases.some(p=>p.assetId===item.assetId);
+  if(!confirm(hasPurchases?'Remove this investment and ALL associated purchases?':'Remove this investment?'))return;
+  if(item){purchases=purchases.filter(p=>p.assetId!==item.assetId);audit('Delete Portfolio Item',item.assetId);}
+  portfolioItems=portfolioItems.filter(p=>p.id!==id);
+  save();renderPortfolioRegister();renderPurchaseLedger();syncPurchaseAssetDropdown();syncIncomeAssetDropdown();
+}
+function renderPortfolioRegister(){
+  const wrap=document.getElementById('portfolio-register-wrap');if(!wrap)return;
+  const filterType=(document.getElementById('port-filter-type')||{}).value||'';
+  const filterText=((document.getElementById('port-filter-text')||{}).value||'').toLowerCase().trim();
+  let items=portfolioItems;
+  if(filterType)items=items.filter(p=>p.assetType===filterType);
+  if(filterText)items=items.filter(p=>(p.assetId+p.description+(p.broker||'')).toLowerCase().includes(filterText));
+  if(!items.length){wrap.innerHTML=portfolioItems.length?'<div class="empty">No results match the filter.</div>':'<div class="empty">No investments registered yet.</div>';return;}
+  let h='<div style="overflow-x:auto"><table><thead><tr><th style="width:90px">Date</th><th style="width:160px">Asset ID</th><th style="width:120px">Asset type</th><th>Broker</th><th>Note</th><th style="width:44px"></th></tr></thead><tbody>';
+  items.forEach(p=>{
+    h+=`<tr style="cursor:pointer" onclick="editPortfolioItem(${p.id})" onmouseover="this.style.background='#f4f4f2'" onmouseout="this.style.background=''">
+      <td>${p.date}</td><td style="font-size:11px;font-weight:600;color:#0c447c">${p.assetId}</td>
+      <td><span class="tag tag-purple">${getAssetLabelFull(p.assetType)}</span></td><td>${p.broker||'—'}</td><td>${p.description||'—'}</td>
+      <td onclick="event.stopPropagation()"><button class="btn-danger" onclick="removePortfolioItem(${p.id})" style="padding:3px 7px;font-size:11px">&#128465;</button></td>
+    </tr>`;
+  });
+  wrap.innerHTML=h+'</tbody></table></div>';
+}
+function syncPurchaseAssetDropdown(){
+  const sel=document.getElementById('purch-asset-id');if(!sel)return;
+  const cur=sel.value;sel.innerHTML='<option value="">— Select asset —</option>';
+  portfolioItems.forEach(p=>{const opt=document.createElement('option');opt.value=p.assetId;opt.textContent=`${p.assetId} — ${getAssetLabelFull(p.assetType)}${p.description?' ('+p.description+')':''}`;opt.dataset.type=p.assetType;opt.dataset.broker=p.broker||'';if(p.assetId===cur)opt.selected=true;sel.appendChild(opt);});
+}
+function onPurchAssetChange(assetId){
+  const item=portfolioItems.find(p=>p.assetId===assetId);
+  document.getElementById('purch-asset-type').value=item?getAssetLabelFull(item.assetType):'';
+  document.getElementById('purch-broker').value=item?item.broker||'':'';
+}
+function setPurchFormMode(editing){
+  document.getElementById('purch-form-title').textContent=editing?'Edit purchase':'Record a purchase';
+  document.getElementById('purch-add-btn').style.display=editing?'none':'inline-block';
+  document.getElementById('purch-update-btn').style.display=editing?'inline-block':'none';
+  document.getElementById('purch-cancel-btn').style.display=editing?'inline-block':'none';
+  if(!editing)document.getElementById('purch-edit-id').value='';
+}
+function addPurchase(){
+  const date=document.getElementById('purch-date').value;const assetId=document.getElementById('purch-asset-id').value;
+  forceRaw('purch-amount','purch-amount-raw');const amount=getRaw('purch-amount-raw');
+  if(!date||!assetId||!amount||amount<=0){alert('Complete all required fields.');return;}
+  const item=portfolioItems.find(p=>p.assetId===assetId);
+  purchases.push({date,assetId,assetType:item?item.assetType:'',broker:item?item.broker||'':'',amount,id:Date.now()});
+  purchases.sort((a,b)=>a.date.localeCompare(b.date));
+  audit('Add Purchase',`${assetId}: ${fmt(amount)} on ${date}`);
+  document.getElementById('purch-date').value=today;document.getElementById('purch-asset-id').value='';document.getElementById('purch-asset-type').value='';document.getElementById('purch-broker').value='';
+  const pa=document.getElementById('purch-amount');pa.value='';pa.classList.remove('input-formatted');document.getElementById('purch-amount-raw').value='';
+  save();renderPurchaseLedger();
+}
+function editPurchase(id){
+  const p=purchases.find(x=>x.id===id);if(!p)return;
+  document.getElementById('purch-date').value=p.date;
+  const sel=document.getElementById('purch-asset-id');sel.value=p.assetId;onPurchAssetChange(p.assetId);
+  const amtEl=document.getElementById('purch-amount');document.getElementById('purch-amount-raw').value=p.amount;amtEl.value=p.amount.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});amtEl.classList.add('input-formatted');
+  document.getElementById('purch-edit-id').value=id;setPurchFormMode(true);
+  document.getElementById('panel-port-purchases').querySelector('.card').scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+function savePurchaseEdit(){
+  const id=parseInt(document.getElementById('purch-edit-id').value);if(!id)return;
+  const date=document.getElementById('purch-date').value;const assetId=document.getElementById('purch-asset-id').value;
+  forceRaw('purch-amount','purch-amount-raw');const amount=getRaw('purch-amount-raw');
+  if(!date||!assetId||!amount){alert('Complete all required fields.');return;}
+  const item=portfolioItems.find(p=>p.assetId===assetId);
+  const idx=purchases.findIndex(x=>x.id===id);if(idx===-1)return;
+  const old=purchases[idx];
+  purchases[idx]={...old,date,assetId,assetType:item?item.assetType:'',broker:item?item.broker||'':'',amount};
+  purchases.sort((a,b)=>a.date.localeCompare(b.date));
+  audit('Edit Purchase',`${assetId}: ${fmt(old.amount)} → ${fmt(amount)}`);
+  cancelPurchaseEdit();save();renderPurchaseLedger();
+}
+function cancelPurchaseEdit(){
+  document.getElementById('purch-date').value=today;document.getElementById('purch-asset-id').value='';document.getElementById('purch-asset-type').value='';document.getElementById('purch-broker').value='';
+  const pa=document.getElementById('purch-amount');pa.value='';pa.classList.remove('input-formatted');document.getElementById('purch-amount-raw').value='';
+  setPurchFormMode(false);
+}
+function removePurchase(id){
+  if(!confirm('Remove this purchase?'))return;
+  const p=purchases.find(x=>x.id===id);if(p)audit('Delete Purchase',`${p.assetId}: ${fmt(p.amount)}`);
+  if(parseInt(document.getElementById('purch-edit-id').value)===id)cancelPurchaseEdit();
+  purchases=purchases.filter(x=>x.id!==id);save();renderPurchaseLedger();
+}
+function renderPurchaseLedger(){
+  const wrap=document.getElementById('purchase-ledger-wrap');if(!wrap)return;
+  const filterType=(document.getElementById('purch-filter-type')||{}).value||'';
+  const filterText=((document.getElementById('purch-filter-text')||{}).value||'').toLowerCase().trim();
+  let items=purchases;
+  if(filterType)items=items.filter(p=>p.assetType===filterType);
+  if(filterText)items=items.filter(p=>(p.assetId+(p.broker||'')).toLowerCase().includes(filterText));
+  if(!items.length){wrap.innerHTML=purchases.length?'<div class="empty">No results match the filter.</div>':'<div class="empty">No purchases recorded yet.</div>';return;}
+  const editingId=parseInt(document.getElementById('purch-edit-id').value)||0;
+  let total=0;
+  let h='<div style="overflow-x:auto"><table><thead><tr><th style="width:90px">Date</th><th style="width:160px">Asset ID</th><th style="width:120px">Asset type</th><th>Broker</th><th class="num" style="width:130px">Amount</th><th style="width:44px"></th></tr></thead><tbody>';
+  items.forEach(p=>{
+    total+=p.amount;const isEd=p.id===editingId;
+    h+=`<tr style="cursor:pointer;${isEd?'background:#eaf6ef':''}" onclick="editPurchase(${p.id})"
+      onmouseover="this.style.background='${isEd?'#d6eedf':'#f4f4f2'}'"
+      onmouseout="this.style.background='${isEd?'#eaf6ef':''}'">
+      <td>${p.date}</td><td style="font-size:11px;font-weight:600;color:#0c447c">${p.assetId}</td>
+      <td><span class="tag tag-purple">${getAssetLabelFull(p.assetType)||'—'}</span></td><td>${p.broker||'—'}</td>
+      <td class="num" style="font-weight:500">${fmt(p.amount)}</td>
+      <td onclick="event.stopPropagation()"><button class="btn-danger" onclick="removePurchase(${p.id})" style="padding:3px 7px;font-size:11px">&#128465;</button></td>
+    </tr>`;
+  });
+  h+=`<tr class="tfoot-row"><td colspan="4">Total</td><td class="num">${fmt(total)}</td><td></td></tr>`;
+  wrap.innerHTML=h+'</tbody></table></div>';
+}
+
+/* ══════════════════════════════════════════════
+   OVERVIEW  (FIX #7 — AUM, unrealised gain)
+══════════════════════════════════════════════ */
+function renderOverview(){
+  const totalDeposits=deposits.reduce((s,d)=>s+d.amount,0);
+  const totalWithdrawals=withdrawals.reduce((s,w)=>s+w.amount,0);
+  const total=totalDeposits-totalWithdrawals;
+  const depUnits=deposits.reduce((s,d)=>s+d.units,0);
+  const wdwUnits=withdrawals.reduce((s,w)=>s+w.units,0);
+  const units=Math.max(depUnits-wdwUnits,0);
+  const members=new Set(deposits.map(d=>d.member)).size;
+  const nav=getCurrentNAV();
+  const aum=units*nav;
+  const totalIncome=incomeRecords.reduce((s,r)=>s+r.amount,0);
+  document.getElementById('m-total').textContent=fmt(total);
+  document.getElementById('m-units').textContent=fmtU(units);
+  document.getElementById('m-members').textContent=members;
+  document.getElementById('m-aum').textContent=fmt(aum);
+  updateNavDisplay();
+  const tGross=profitRounds.reduce((s,r)=>s+r.gross,0);
+  const tExp=profitRounds.reduce((s,r)=>s+r.expenses,0);
+  const tNet=profitRounds.reduce((s,r)=>s+r.net,0);
+  document.getElementById('ov-gross').textContent=fmt(tGross);
+  document.getElementById('ov-exp').textContent=fmt(tExp);
+  document.getElementById('ov-net').textContent=fmt(tNet);
+  document.getElementById('ov-income').textContent=fmt(totalIncome);
+  document.getElementById('ov-rounds').textContent=profitRounds.length;
+  updateTopbarLockIn();
+  renderFundTimeline();
+  /* member unit table with current value & unrealised gain */
+  if(!deposits.length){document.getElementById('unit-summary').innerHTML='<div class="empty">No deposits recorded yet.</div>';return;}
+  const ms=getMemberSummary();
+  let h='<div style="overflow-x:auto"><table><thead><tr>'
+    +'<th style="width:26px"></th>'
+    +'<th>Member</th><th class="num">Invested</th><th class="num">Units</th>'
+    +'<th class="num">Current value</th><th class="num">Unrealised gain</th>'
+    +'<th class="num">Total return</th><th class="num">Share %</th><th class="num">Deposits</th>'
+    +'</tr></thead><tbody id="unit-summary-body">';
+  ms.sort((a,b)=>b.totalUnits-a.totalUnits).forEach((m,i)=>{
+    const share=units>0?m.totalUnits/units:0;
+    const badge=share>0.3?'tag-blue':share>0.15?'tag-purple':'tag-amber';
+    const curVal=m.totalUnits*nav;
+    const uGain=curVal-m.totalAmount;
+    const totalProfitForMember=profitRounds.reduce((s,r)=>{const p=r.payouts.find(x=>x.member===m.member);return s+(p?p.payout:0);},0);
+    const totalReturn=m.totalAmount>0?((uGain+totalProfitForMember)/m.totalAmount*100):0;
+    const gCol=uGain>=0?'#3b6d11':'#a32d2d';
+    const tCol=totalReturn>=0?'#3b6d11':'#a32d2d';
+    h+=`<tr class="member-summary-row" id="msrow-${i}" onclick="toggleMemberDeposits(${i},'${m.member.replace(/'/g,"\\'")}',ms)" style="cursor:pointer" data-open="0">
+      <td style="color:#888780;font-size:10px" id="msarrow-${i}">&#9658;</td>
+      <td><strong>${m.member}</strong></td>
+      <td class="num">${fmt(m.totalAmount)}</td>
+      <td class="num">${fmtU(m.totalUnits)}</td>
+      <td class="num" style="color:#0c447c;font-weight:600">${fmt(curVal)}</td>
+      <td class="num" style="color:${gCol}">${uGain>=0?'+':''}${fmt(uGain)}</td>
+      <td class="num" style="color:${tCol};font-weight:600">${totalReturn>=0?'+':''}${totalReturn.toFixed(2)}%</td>
+      <td class="num"><span class="tag ${badge}">${(share*100).toFixed(2)}%</span></td>
+      <td class="num">${m.deposits.length}</td>
+    </tr>
+    <tr id="msdetail-${i}" style="display:none"><td colspan="9" style="padding:0;background:#f9f9f7"></td></tr>`;
+  });
+  document.getElementById('unit-summary').innerHTML=h+'</tbody></table></div>';
+  window._msSummary=ms;
+}
+
+function toggleMemberDeposits(idx,memberName){
+  const row=document.getElementById('msrow-'+idx);
+  const detail=document.getElementById('msdetail-'+idx);
+  const arrow=document.getElementById('msarrow-'+idx);
+  const isOpen=row.dataset.open==='1';
+  document.querySelectorAll('.member-summary-row').forEach((r,i)=>{
+    r.dataset.open='0';const a=document.getElementById('msarrow-'+i);if(a)a.textContent='▶';
+    const d=document.getElementById('msdetail-'+i);if(d)d.style.display='none';
+  });
+  if(!isOpen){
+    const ms=window._msSummary||[];const m=ms.find(x=>x.member===memberName);if(!m)return;
+    let inner='<div style="padding:8px 12px 10px 28px;background:#f4f4f2"><div style="font-size:11px;font-weight:600;color:#888780;text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px">Deposits — '+memberName+'</div>'
+      +'<table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr>'
+      +'<th style="padding:5px 6px;border-bottom:0.5px solid #d3d1c7;font-size:10px;color:#888780">Date</th>'
+      +'<th style="text-align:right;padding:5px 6px;border-bottom:0.5px solid #d3d1c7;font-size:10px;color:#888780">Amount</th>'
+      +'<th style="text-align:right;padding:5px 6px;border-bottom:0.5px solid #d3d1c7;font-size:10px;color:#888780">NAV</th>'
+      +'<th style="text-align:right;padding:5px 6px;border-bottom:0.5px solid #d3d1c7;font-size:10px;color:#888780">Units</th>'
+      +'</tr></thead><tbody>';
+    m.deposits.forEach(d=>{inner+=`<tr><td style="padding:5px 6px;border-bottom:0.5px solid #e8e6df">${d.date}</td><td style="text-align:right;padding:5px 6px;border-bottom:0.5px solid #e8e6df">${fmt(d.amount)}</td><td style="text-align:right;padding:5px 6px;border-bottom:0.5px solid #e8e6df;font-size:11px">${getCurrency()}${d.nav.toLocaleString(undefined,{minimumFractionDigits:4,maximumFractionDigits:4})}</td><td style="text-align:right;padding:5px 6px;border-bottom:0.5px solid #e8e6df">${fmtU(d.units)}</td></tr>`;});
+    inner+='</tbody></table></div>';
+    detail.cells[0].innerHTML=inner;detail.style.display='';
+    row.dataset.open='1';if(arrow)arrow.textContent='▼';
+  }
+}
+
+/* ══════════════════════════════════════════════
+   CHARTS
+══════════════════════════════════════════════ */
+function renderCharts(){renderChartCumulative();renderChartShare();renderChartProfit();}
+function destroyChart(c){if(c)c.destroy();return null;}
+function renderChartCumulative(){
+  chartCumulative=destroyChart(chartCumulative);
+  const sorted=[...deposits].sort((a,b)=>a.date.localeCompare(b.date));if(!sorted.length)return;
+  let run=0;const labels=[],data=[];
+  sorted.forEach(d=>{run+=d.amount;labels.push(d.date);data.push(parseFloat(run.toFixed(2)));});
+  const ctx=document.getElementById('chart-cumulative').getContext('2d');
+  chartCumulative=new Chart(ctx,{type:'line',data:{labels,datasets:[{label:'Total invested',data,borderColor:'#378add',backgroundColor:'rgba(55,138,221,.12)',fill:true,tension:.35,pointRadius:3,pointBackgroundColor:'#378add'}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{ticks:{callback:v=>getCurrency()+v.toLocaleString(),font:{size:10}},grid:{color:'rgba(0,0,0,.06)'}},x:{ticks:{maxTicksLimit:6,maxRotation:30,font:{size:10}},grid:{display:false}}}}});
+}
+function renderChartShare(){
+  chartShare=destroyChart(chartShare);
+  const ms=getMemberSummary();if(!ms.length)return;
+  const colors=['#378add','#7f77dd','#1d9e75','#ef9f27','#d85a30','#d4537e','#639922','#e24b4a','#c9b97a','#5f5e5a'];
+  const ctx=document.getElementById('chart-share').getContext('2d');
+  chartShare=new Chart(ctx,{type:'doughnut',data:{labels:ms.map(m=>m.member),datasets:[{data:ms.map(m=>parseFloat(m.totalAmount.toFixed(2))),backgroundColor:colors.slice(0,ms.length),borderWidth:2,borderColor:'#fff'}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'right',labels:{font:{size:11},boxWidth:12,padding:8}}}}});
+}
+function renderChartProfit(){
+  chartProfit=destroyChart(chartProfit);if(!profitRounds.length)return;
+  const ctx=document.getElementById('chart-profit').getContext('2d');
+  chartProfit=new Chart(ctx,{type:'bar',data:{labels:profitRounds.map(r=>r.label),datasets:[{label:'Gross profit',data:profitRounds.map(r=>r.gross),backgroundColor:'rgba(55,138,221,.75)',borderRadius:4},{label:'Net distributed',data:profitRounds.map(r=>r.net),backgroundColor:'rgba(59,109,17,.75)',borderRadius:4}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'top',labels:{font:{size:11},boxWidth:12}}},scales:{y:{ticks:{callback:v=>getCurrency()+v.toLocaleString(),font:{size:10}},grid:{color:'rgba(0,0,0,.06)'}},x:{grid:{display:false},ticks:{font:{size:10}}}}}});
+}
+
+/* ══════════════════════════════════════════════
+   MEMBERS VIEW  (FIX — unrealised gain, current value)
+══════════════════════════════════════════════ */
+function renderMemberPills(){
+  const members=[...new Set(deposits.map(d=>d.member))];
+  if(!members.length){document.getElementById('member-pills').innerHTML='<div class="empty">No members yet — add deposits first.</div>';document.getElementById('member-detail').innerHTML='';return;}
+  let h='<div style="display:flex;gap:8px;flex-wrap:wrap">';
+  members.forEach(m=>{h+=`<button class="m-pill ${m===selectedMember?'sel':''}" onclick="selectMember('${m.replace(/'/g,"\\'")}')"> ${m}</button>`;});
+  document.getElementById('member-pills').innerHTML=h+'</div>';
+  if(!selectedMember||!members.includes(selectedMember))selectMember(members[0]);
+}
+function selectMember(name){selectedMember=name;renderMemberPills();renderMemberDetail(name);}
+function getMemberStats(name){
+  const myDeps=deposits.filter(d=>d.member===name);
+  const myWdws=withdrawals.filter(w=>w.member===name);
+  const totalUnitsAll=deposits.reduce((s,d)=>s+d.units,0);
+  const depUnits=myDeps.reduce((s,d)=>s+d.units,0);
+  const wdwUnits=myWdws.reduce((s,w)=>s+w.units,0);
+  const myUnits=Math.max(depUnits-wdwUnits,0);
+  const myAmount=myDeps.reduce((s,d)=>s+d.amount,0);
+  const myWdwAmount=myWdws.reduce((s,w)=>s+w.amount,0);
+  const netInvested=myAmount-myWdwAmount;
+  const share=totalUnitsAll>0?depUnits/totalUnitsAll:0;
+  const nav=getCurrentNAV();
+  const currentValue=myUnits*nav;
+  const unrealisedGain=currentValue-netInvested;
+  const myRounds=profitRounds.map(r=>{const p=r.payouts.find(x=>x.member===name);return p?{label:r.label,date:r.date,payout:p.payout,share:p.share}:null;}).filter(Boolean);
+  const totalProfit=myRounds.reduce((s,r)=>s+r.payout,0);
+  const totalReturn=netInvested>0?((unrealisedGain+totalProfit)/netInvested)*100:0;
+  const roi=myAmount>0?(totalProfit/myAmount)*100:0;
+  const firstDate=myDeps.length?myDeps[0].date:null;
+  const avgDeposit=myDeps.length?myAmount/myDeps.length:0;
+  const largestDeposit=myDeps.length?Math.max(...myDeps.map(d=>d.amount)):0;
+  const avgRoundShare=myRounds.length?myRounds.reduce((s,r)=>s+r.share,0)/myRounds.length:0;
+  return{myDeps,myWdws,myUnits,myAmount,netInvested,share,currentValue,unrealisedGain,myRounds,totalProfit,totalReturn,roi,firstDate,avgDeposit,largestDeposit,avgRoundShare,name};
+}
+function toggleMemberSection(id){
+  const allIds=['mem-sec-perf','mem-sec-contrib','mem-sec-profit','mem-sec-wdw'];
+  allIds.forEach(s=>{
+    const body=document.getElementById(s+'-body');const arrow=document.getElementById(s+'-arrow');if(!body||!arrow)return;
+    if(s===id){const isOpen=body.style.display!=='none';body.style.display=isOpen?'none':'block';arrow.textContent=isOpen?'▶':'▼';}
+    else{body.style.display='none';arrow.textContent='▶';}
+  });
+}
+function collapsibleCard(id,title,content,startOpen){
+  return `<div class="card"><div style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none" onclick="toggleMemberSection('${id}')"><div class="card-title" style="margin-bottom:0">${title}</div><span id="${id}-arrow" style="font-size:11px;color:#888780">${startOpen?'▼':'▶'}</span></div><div id="${id}-body" style="display:${startOpen?'block':'none'};margin-top:10px">${content}</div></div>`;
+}
+function renderMemberDetail(name){
+  const s=getMemberStats(name);
+  const nav=getCurrentNAV();
+  const roiColor=s.roi>0?'#3b6d11':s.roi<0?'#a32d2d':'#1a1a18';
+  const gCol=s.unrealisedGain>=0?'#3b6d11':'#a32d2d';
+  const tCol=s.totalReturn>=0?'#3b6d11':'#a32d2d';
+  const mReg=membersRegistry.find(r=>r.name===name);
+  let h=`<div class="card">
+    <div class="member-header">
+      <div class="avatar">${initials(name)}</div>
+      <div style="flex:1">
+        <div style="font-weight:600;font-size:15px">${name}${mReg?` <span style="font-size:11px;color:#0c447c;font-weight:600">${mReg.memberId}</span>`:''}</div>
+        <div style="font-size:12px;color:#5f5e5a">${s.myDeps.length} deposit${s.myDeps.length!==1?'s':''} &middot; ${(s.share*100).toFixed(2)}% of total subscribed units</div>
+      </div>
+      <button class="btn-pdf" onclick="generateMemberPDF('${name.replace(/'/g,"\\'")}')">&#128196; PDF report</button>
+    </div>
+    <div class="metrics">
+      <div class="metric"><div class="metric-label">Total subscribed</div><div class="metric-val">${fmt(s.myAmount)}</div></div>
+      <div class="metric"><div class="metric-label">Net invested</div><div class="metric-val">${fmt(s.netInvested)}</div></div>
+      <div class="metric"><div class="metric-label">Units held</div><div class="metric-val">${fmtU(s.myUnits)}</div></div>
+      <div class="metric"><div class="metric-label">Current value</div><div class="metric-val" style="color:#0c447c">${fmt(s.currentValue)}</div><div class="metric-sub">@ NAV ${getCurrency()}${nav.toFixed(4)}</div></div>
+      <div class="metric"><div class="metric-label">Unrealised gain</div><div class="metric-val" style="color:${gCol}">${s.unrealisedGain>=0?'+':''}${fmt(s.unrealisedGain)}</div></div>
+    </div>
+    <div class="metrics">
+      <div class="metric"><div class="metric-label">Profit received</div><div class="metric-val" style="color:#3b6d11">${fmt(s.totalProfit)}</div></div>
+      <div class="metric"><div class="metric-label">Total return</div><div class="metric-val" style="color:${tCol}">${s.totalReturn>=0?'+':''}${s.totalReturn.toFixed(2)}%</div><div class="metric-sub">gain + profit ÷ net invested</div></div>
+      <div class="metric"><div class="metric-label">ROI (cash)</div><div class="metric-val" style="color:${roiColor}">${s.roi.toFixed(2)}%</div><div class="metric-sub">profit ÷ subscribed</div></div>
+    </div>
+  </div>`;
+  const perfContent=`<div class="metrics">
+    <div class="metric"><div class="metric-label">Average deposit</div><div class="metric-val">${fmt(s.avgDeposit)}</div></div>
+    <div class="metric"><div class="metric-label">Largest deposit</div><div class="metric-val">${fmt(s.largestDeposit)}</div></div>
+    <div class="metric"><div class="metric-label">Avg profit share</div><div class="metric-val">${(s.avgRoundShare*100).toFixed(2)}%</div></div>
+    <div class="metric"><div class="metric-label">First deposit</div><div class="metric-val" style="font-size:14px">${s.firstDate||'—'}</div></div>
+    <div class="metric"><div class="metric-label">Profit rounds</div><div class="metric-val">${s.myRounds.length} / ${profitRounds.length}</div></div>
+  </div>`;
+  h+=collapsibleCard('mem-sec-perf','Performance metrics',perfContent,true);
+  let contribContent='<div class="empty">No deposits.</div>';
+  if(s.myDeps.length){
+    contribContent='<div style="overflow-x:auto"><table><thead><tr><th>Date</th><th class="num">Amount</th><th class="num">NAV used</th><th class="num">Units</th></tr></thead><tbody>';
+    s.myDeps.forEach(d=>{contribContent+=`<tr><td>${d.date}</td><td class="num">${fmt(d.amount)}</td><td class="num" style="font-size:11px">${getCurrency()}${d.nav.toLocaleString(undefined,{minimumFractionDigits:4,maximumFractionDigits:4})}</td><td class="num">${fmtU(d.units)}</td></tr>`;});
+    contribContent+=`<tr class="tfoot-row"><td>Total</td><td class="num">${fmt(s.myAmount)}</td><td></td><td class="num">${fmtU(s.myDeps.reduce((x,d)=>x+d.units,0))}</td></tr>`;
+    contribContent+='</tbody></table></div>';
+  }
+  h+=collapsibleCard('mem-sec-contrib','Subscription history',contribContent,false);
+  let wdwContent='<div class="empty">No withdrawals.</div>';
+  if(s.myWdws.length){
+    wdwContent='<div style="overflow-x:auto"><table><thead><tr><th>Date</th><th class="num">Amount</th><th class="num">Units</th><th>Reason</th></tr></thead><tbody>';
+    s.myWdws.forEach(w=>{wdwContent+=`<tr><td>${w.date}</td><td class="num" style="color:#a32d2d">-${fmt(w.amount)}</td><td class="num" style="color:#a32d2d">-${fmtU(w.units)}</td><td style="font-size:12px">${w.reason||'—'}</td></tr>`;});
+    wdwContent+='</tbody></table></div>';
+  }
+  h+=collapsibleCard('mem-sec-wdw','Withdrawal history',wdwContent,false);
+  let profitContent='<div class="empty">No profit distributions yet.</div>';
+  if(s.myRounds.length){
+    profitContent='<div style="overflow-x:auto"><table><thead><tr><th>Round</th><th>Date</th><th class="num">Share</th><th class="num">Payout</th><th class="num">Running total</th></tr></thead><tbody>';
+    let running=0;
+    s.myRounds.forEach(r=>{running+=r.payout;profitContent+=`<tr><td><strong>${r.label}</strong></td><td>${r.date}</td><td class="num">${(r.share*100).toFixed(2)}%</td><td class="num" style="color:#3b6d11">${fmt(r.payout)}</td><td class="num">${fmt(running)}</td></tr>`;});
+    profitContent+=`<tr class="tfoot-row"><td colspan="3">Total</td><td class="num" style="color:#3b6d11">${fmt(s.totalProfit)}</td><td></td></tr>`;
+    profitContent+='</tbody></table></div>';
+  }
+  h+=collapsibleCard('mem-sec-profit','Profit received per round',profitContent,false);
+  document.getElementById('member-detail').innerHTML=h;
+}
+
+/* ══════════════════════════════════════════════
+   PDF  (Priority #9 — enhanced with current value, lock-in status)
+══════════════════════════════════════════════ */
+function generateMemberPDF(name){
+  if(!window.jspdf){alert('PDF library loading — try again in a moment.');return;}
+  const {jsPDF}=window.jspdf;
+  const doc=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});
+  const s=getMemberStats(name);
+  const fundName=document.getElementById('fund-name').value||'Investment Club';
+  const c=getCurrency();const W=210,M=18;let y=0;
+  const nav=getCurrentNAV();
+  const lockEnd=getLockInEndDate();const horizEnd=getHorizonEndDate();
+  const mReg=membersRegistry.find(r=>r.name===name);
+  doc.setFillColor(26,26,24);doc.rect(0,0,W,28,'F');
+  doc.setTextColor(255,255,255);doc.setFontSize(16);doc.setFont('helvetica','bold');doc.text(fundName,M,13);
+  doc.setFontSize(9);doc.setFont('helvetica','normal');doc.text('Member Statement',M,20);
+  doc.text('Generated: '+new Date().toLocaleDateString(),W-M,20,{align:'right'});
+  y=36;
+  doc.setTextColor(26,26,24);doc.setFontSize(18);doc.setFont('helvetica','bold');doc.text(name,M,y);y+=7;
+  doc.setFontSize(9);doc.setFont('helvetica','normal');doc.setTextColor(100,100,96);
+  const idLabel=mReg?'Member ID: '+mReg.memberId+' | ':'';
+  doc.text(idLabel+'Fund share: '+(s.share*100).toFixed(2)+'%  |  First deposit: '+(s.firstDate||'—'),M,y);y+=6;
+  const navStr=`Current NAV: ${c}${nav.toLocaleString(undefined,{minimumFractionDigits:4,maximumFractionDigits:4})} | Current value: ${c}${s.currentValue.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}`;
+  doc.text(navStr,M,y);y+=5;
+  if(lockEnd){const lockStatus=today<lockEnd?`Lock-in active (ends ${lockEnd})`:(horizEnd&&today<horizEnd?`Holding period (matures ${horizEnd})`:`Fund matured ${horizEnd}`);doc.setTextColor(163,45,45);doc.text(lockStatus,M,y);doc.setTextColor(26,26,24);}
+  y+=6;
+  doc.setDrawColor(210,209,199);doc.setLineWidth(0.3);doc.line(M,y,W-M,y);y+=8;
+  function box(lbl,val,bx,col){const bw=40,bh=20;doc.setFillColor(244,244,242);doc.roundedRect(bx,y,bw,bh,2,2,'F');doc.setFontSize(7.5);doc.setFont('helvetica','normal');doc.setTextColor(100,100,96);doc.text(lbl,bx+3,y+6);doc.setFontSize(10);doc.setFont('helvetica','bold');if(col)doc.setTextColor(...col);else doc.setTextColor(26,26,24);doc.text(val,bx+3,y+15);doc.setTextColor(26,26,24);}
+  box('Net invested',c+s.netInvested.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}),M);
+  box('Units held',fmtU(s.myUnits),M+43);
+  box('Current value',c+s.currentValue.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}),M+86,[12,68,124]);
+  box('Profit received',c+s.totalProfit.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}),M+129,[59,109,17]);
+  y+=28;
+  function secHeader(title){doc.setFontSize(9);doc.setFont('helvetica','bold');doc.setTextColor(100,100,96);doc.text(title.toUpperCase(),M,y);doc.setDrawColor(210,209,199);doc.setLineWidth(0.3);doc.line(M,y+2,W-M,y+2);y+=9;doc.setTextColor(26,26,24);}
+  function drawTable(cols,widths,aligns,rows){
+    const hh=6,rh=7;doc.setFillColor(240,240,238);doc.rect(M,y,W-2*M,hh,'F');doc.setFontSize(7.5);doc.setFont('helvetica','bold');doc.setTextColor(88,88,84);let x=M;
+    cols.forEach((col,i)=>{doc.text(col,aligns[i]==='R'?x+widths[i]-1:x+1,y+4.2,{align:aligns[i]==='R'?'right':'left'});x+=widths[i];});
+    y+=hh;doc.setFont('helvetica','normal');doc.setFontSize(8);
+    rows.forEach((row,ri)=>{
+      if(y>272){doc.addPage();y=18;}
+      if(ri%2===1){doc.setFillColor(249,249,247);doc.rect(M,y,W-2*M,rh,'F');}
+      doc.setDrawColor(224,222,215);doc.setLineWidth(0.15);doc.line(M,y+rh,W-M,y+rh);
+      let rx=M;
+      row.forEach((cell,i)=>{const bold=cell&&typeof cell==='object'&&cell.bold;const color=cell&&typeof cell==='object'&&cell.color;const txt=cell&&typeof cell==='object'?cell.v:String(cell||'');doc.setFont('helvetica',bold?'bold':'normal');if(color)doc.setTextColor(...color);else doc.setTextColor(26,26,24);doc.text(txt,aligns[i]==='R'?rx+widths[i]-1:rx+1,y+4.8,{align:aligns[i]==='R'?'right':'left'});rx+=widths[i];});
+      y+=rh;
+    });
+    y+=5;
+  }
+  secHeader('Subscription history');
+  if(s.myDeps.length){
+    const rows=s.myDeps.map(d=>[d.date,c+d.amount.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}),c+d.nav.toLocaleString(undefined,{minimumFractionDigits:4,maximumFractionDigits:4}),fmtU(d.units)]);
+    rows.push([{v:'Total',bold:true},{v:c+s.myAmount.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}),bold:true},'',{v:fmtU(s.myDeps.reduce((x,d)=>x+d.units,0)),bold:true}]);
+    drawTable(['Date','Amount','NAV at deposit','Units'],[32,46,54,40],['L','R','R','R'],rows);
+  }else{doc.setFontSize(9);doc.setTextColor(160,160,155);doc.text('No deposits.',M,y);y+=8;}
+  if(y>240){doc.addPage();y=18;}
+  secHeader('Profit received per round');
+  if(s.myRounds.length){
+    let running=0;
+    const rows=s.myRounds.map(r=>{running+=r.payout;return[r.label,r.date,(r.share*100).toFixed(2)+'%',{v:c+r.payout.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}),color:[59,109,17]},c+running.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})];});
+    rows.push([{v:'Total',bold:true},'','',{v:c+s.totalProfit.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}),bold:true,color:[59,109,17]},'']);
+    drawTable(['Round','Date','Share','Payout','Running total'],[40,28,22,44,38],['L','L','R','R','R'],rows);
+  }else{doc.setFontSize(9);doc.setTextColor(160,160,155);doc.text('No profit distributions yet.',M,y);y+=8;}
+  if(y>240){doc.addPage();y=18;}
+  secHeader('Valuation & performance summary');
+  const rows2=[
+    ['Current NAV per unit',c+nav.toLocaleString(undefined,{minimumFractionDigits:4,maximumFractionDigits:4})],
+    ['Units held',fmtU(s.myUnits)],
+    ['Current portfolio value',c+s.currentValue.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})],
+    ['Net invested',c+s.netInvested.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})],
+    ['Unrealised gain',c+Math.abs(s.unrealisedGain).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})+(s.unrealisedGain>=0?' (gain)':' (loss)')],
+    ['Total profit received',c+s.totalProfit.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})],
+    ['Total return (gain + profit / invested)',s.totalReturn.toFixed(2)+'%'],
+    ['Cash ROI (profit / subscribed)',s.roi.toFixed(2)+'%'],
+    ['Fund status',lockEnd&&today<lockEnd?'Lock-in period active — ends '+lockEnd:(horizEnd&&today<horizEnd?'Holding period — matures '+horizEnd:'Open for distributions')],
+  ];
+  rows2.forEach(([lbl,val])=>{
+    if(y>272){doc.addPage();y=18;}
+    doc.setFontSize(9);doc.setFont('helvetica','normal');doc.setTextColor(88,88,84);doc.text(lbl,M,y);
+    doc.setFont('helvetica','bold');doc.setTextColor(26,26,24);doc.text(val,W-M,y,{align:'right'});
+    doc.setDrawColor(230,228,220);doc.setLineWidth(0.2);doc.line(M,y+2,W-M,y+2);y+=9;
+  });
+  const totalPages=doc.internal.getNumberOfPages();
+  for(let i=1;i<=totalPages;i++){doc.setPage(i);doc.setFontSize(8);doc.setFont('helvetica','normal');doc.setTextColor(160,160,155);doc.text(fundName+' — Confidential member statement',M,290);doc.text('Page '+i+' of '+totalPages,W-M,290,{align:'right'});}
+  const safeName=name.replace(/[^a-z0-9]/gi,'_').toLowerCase();
+  doc.save(safeName+'_statement_v28_'+today+'.pdf');
+  audit('PDF Export','Member statement for '+name);
+}
+
+/* ══════════════════════════════════════════════
+   KYC MODULE
+══════════════════════════════════════════════ */
+const KYC_FIELDS=['kyc-nok-name','kyc-nok-dob','kyc-nok-gender','kyc-nok-relationship','kyc-nok-phone1','kyc-nok-phone2','kyc-nok-email','kyc-nok-address','kyc-nok-city','kyc-nok-state','kyc-bank1-name','kyc-bank1-number','kyc-bank1-bank','kyc-bank2-name','kyc-bank2-number','kyc-bank2-bank'];
+function setKYCFieldsDisabled(disabled){KYC_FIELDS.forEach(id=>{const el=document.getElementById(id);if(!el)return;el.disabled=disabled;el.style.background=disabled?'#f4f4f2':'#fff';el.style.cursor=disabled?'default':'';});}
+function onKYCMemberChange(name){
+  if(!name){document.getElementById('kyc-form-body').style.display='none';document.getElementById('kyc-action-btns').style.display='none';document.getElementById('kyc-status-badge').innerHTML='';document.getElementById('kyc-members-overview').innerHTML='';return;}
+  kycEditMode=false;loadKYCForm(name);renderKYCMembersOverview();
+}
+function loadKYCForm(name){
+  const d=kycData[name]||{};const nok=d.nok||{};const b1=d.bank1||{};const b2=d.bank2||{};const hasSaved=!!d.savedAt;
+  setVal('kyc-nok-name',nok.name);setVal('kyc-nok-dob',nok.dob);setVal('kyc-nok-gender',nok.gender);setVal('kyc-nok-relationship',nok.relationship);setVal('kyc-nok-phone1',nok.phone1);setVal('kyc-nok-phone2',nok.phone2);setVal('kyc-nok-email',nok.email);setVal('kyc-nok-address',nok.address);setVal('kyc-nok-city',nok.city);setVal('kyc-nok-state',nok.state);
+  setVal('kyc-bank1-name',b1.name);setVal('kyc-bank1-number',b1.number);setVal('kyc-bank1-bank',b1.bank);
+  setVal('kyc-bank2-name',b2.name);setVal('kyc-bank2-number',b2.number);setVal('kyc-bank2-bank',b2.bank);
+  document.getElementById('kyc-form-body').style.display='block';
+  const btns=document.getElementById('kyc-action-btns');btns.style.display='flex';
+  const badge=document.getElementById('kyc-status-badge');
+  if(hasSaved&&!kycEditMode){
+    setKYCFieldsDisabled(true);badge.innerHTML=`<div class="kyc-badge kyc-badge-ok">&#10003; KYC on file — ${d.savedAt}</div>`;
+    document.getElementById('kyc-edit-btn').style.display='inline-block';document.getElementById('kyc-clear-btn').style.display='none';document.getElementById('kyc-save-btn').style.display='none';
+  }else{
+    setKYCFieldsDisabled(false);
+    badge.innerHTML=hasSaved?`<div class="kyc-badge kyc-badge-missing">&#9998; Editing — save to confirm</div>`:`<div class="kyc-badge kyc-badge-missing">&#9888; No KYC on file for ${name}</div>`;
+    document.getElementById('kyc-edit-btn').style.display='none';document.getElementById('kyc-clear-btn').style.display='inline-block';document.getElementById('kyc-save-btn').style.display='inline-block';
+  }
+}
+function enableKYCEdit(){kycEditMode=true;const name=document.getElementById('kyc-member-select').value;if(name)loadKYCForm(name);}
+function saveKYC(){
+  const name=document.getElementById('kyc-member-select').value;if(!name){alert('Select a member first.');return;}
+  if(!getVal('kyc-nok-name')){alert('Please enter the Next of Kin full name.');return;}
+  if(!getVal('kyc-bank1-name')||!getVal('kyc-bank1-number')||!getVal('kyc-bank1-bank')){alert('Please complete the primary bank account details.');return;}
+  const savedAt=new Date().toLocaleString();
+  kycData[name]={nok:{name:getVal('kyc-nok-name'),dob:getVal('kyc-nok-dob'),gender:getVal('kyc-nok-gender'),phone1:getVal('kyc-nok-phone1'),phone2:getVal('kyc-nok-phone2'),email:getVal('kyc-nok-email'),address:getVal('kyc-nok-address'),city:getVal('kyc-nok-city'),state:getVal('kyc-nok-state'),relationship:getVal('kyc-nok-relationship')},bank1:{name:getVal('kyc-bank1-name'),number:getVal('kyc-bank1-number'),bank:getVal('kyc-bank1-bank')},bank2:{name:getVal('kyc-bank2-name'),number:getVal('kyc-bank2-number'),bank:getVal('kyc-bank2-bank')},savedAt};
+  kycEditMode=false;audit('Save KYC',name);save();loadKYCForm(name);renderKYCMembersOverview();
+}
+function clearKYCForm(){if(!confirm('Clear all form fields?'))return;KYC_FIELDS.forEach(id=>setVal(id,''));}
+function renderKYCMembersOverview(){
+  const members=[...new Set([...membersRegistry.map(m=>m.name),...deposits.map(d=>d.member)])];
+  if(!members.length){document.getElementById('kyc-members-overview').innerHTML='';return;}
+  function row(label,val){return `<tr><td style="color:#5f5e5a;width:40%;padding:5px 6px;border-bottom:0.5px solid #d3d1c7;font-size:12px">${label}</td><td style="font-weight:500;padding:5px 6px;border-bottom:0.5px solid #d3d1c7;font-size:12px">${val||'<span style="color:#b4b2a9">—</span>'}</td></tr>`;}
+  let html='<div style="margin-top:0"><div style="display:flex;gap:0;border-bottom:1px solid #d3d1c7;background:#fff;border-radius:12px 12px 0 0;overflow-x:auto">';
+  members.forEach((m,i)=>{const hasKYC=kycData[m]&&kycData[m].savedAt;const dot=hasKYC?'<span style="color:#639922;font-size:9px">&#9679;</span> ':'<span style="color:#d07a2a;font-size:9px">&#9675;</span> ';html+=`<button class="tab-btn" id="kyc-tab-${i}" onclick="showKYCTab(${i},${members.length})" style="font-size:12px">${dot}${m}</button>`;});
+  html+='</div>';
+  members.forEach((m,i)=>{
+    const d=kycData[m]||{};const n=d.nok||{};const b1=d.bank1||{};const b2=d.bank2||{};const hasSaved=!!d.savedAt;
+    html+=`<div id="kyc-tab-panel-${i}" style="display:${i===0?'block':'none'};border:1px solid #d3d1c7;border-top:none;border-radius:0 0 12px 12px;background:#fff;padding:14px">`;
+    if(!hasSaved){html+=`<div class="empty" style="padding:24px">&#9888; No KYC saved for <strong>${m}</strong> yet.</div>`;}
+    else{
+      html+=`<div style="font-size:11px;color:#888780;margin-bottom:10px">Last updated: ${d.savedAt}</div>`;
+      html+=`<div style="font-size:11px;font-weight:600;color:#633806;text-transform:uppercase;padding-bottom:5px;border-bottom:1px solid #f0d98a;margin-bottom:8px">&#128100; Next of kin</div>`;
+      html+=`<div style="display:grid;grid-template-columns:1fr 1fr;gap:0 24px;margin-bottom:14px"><table style="width:100%;border-collapse:collapse">${row('Full Name',n.name)}${row('Date of Birth',n.dob)}${row('Gender',n.gender)}${row('Relationship',n.relationship)}${row('Phone (Primary)',n.phone1)}</table><table style="width:100%;border-collapse:collapse">${row('Phone (Alt)',n.phone2)}${row('Email',n.email)}${row('Address',n.address)}${row('City',n.city)}${row('State',n.state)}</table></div>`;
+      html+=`<div style="font-size:11px;font-weight:600;color:#0c447c;text-transform:uppercase;padding-bottom:5px;border-bottom:1px solid #b5d4f4;margin-bottom:8px">&#127981; Bank details</div>`;
+      html+=`<div style="display:grid;grid-template-columns:1fr 1fr;gap:0 24px"><div><div style="font-size:11px;color:#5f5e5a;font-weight:500;margin-bottom:4px">Primary</div><table style="width:100%;border-collapse:collapse">${row('Account Name',b1.name)}${row('Account Number',maskAccount(b1.number))}${row('Bank',b1.bank)}</table></div>`;
+      if(b2.name||b2.number||b2.bank){html+=`<div><div style="font-size:11px;color:#5f5e5a;font-weight:500;margin-bottom:4px">Alternative</div><table style="width:100%;border-collapse:collapse">${row('Account Name',b2.name)}${row('Account Number',maskAccount(b2.number))}${row('Bank',b2.bank)}</table></div>`;}
+      html+='</div>';
+    }
+    html+='</div>';
+  });
+  html+='</div>';
+  document.getElementById('kyc-members-overview').innerHTML=html;
+  showKYCTab(0,members.length);
+}
+function showKYCTab(idx,total){for(let i=0;i<total;i++){const tb=document.getElementById('kyc-tab-'+i);const pn=document.getElementById('kyc-tab-panel-'+i);if(tb)tb.classList.toggle('active',i===idx);if(pn)pn.style.display=i===idx?'block':'none';}}
+
+/* ══════════════════════════════════════════════
+   RENDER ALL
+══════════════════════════════════════════════ */
+function renderAll(){
+  renderLedger();renderWithdrawalLedger();renderOwnership();renderOverview();
+  renderMemberPills();renderProfitHistory();renderNAVHistory();updateProfitUnitSummary();
+  renderBrokerRegister();renderAssetTypeRegister();
+  syncPortfolioDropdowns();renderPortfolioRegister();renderPurchaseLedger();
+  syncPurchaseAssetDropdown();syncIncomeAssetDropdown();renderIncomeLedger();
+  updateMemberDatalist();if(selectedMember)renderMemberDetail(selectedMember);
+  renderMemberRegistry();syncAllMemberDropdowns();
+  updateKYCMemberDropdown();updateStorageMeter();
+  checkProfitLockIn();updateTopbarLockIn();
+  if(document.getElementById('panel-kyc').classList.contains('active'))renderKYCMembersOverview();
+  if(document.getElementById('settings-audit-log')&&document.getElementById('settings-audit-log').style.display==='block')renderAuditLog();
+}
+function updateKYCMemberDropdown(){
+  const sel=document.getElementById('kyc-member-select');if(!sel)return;
+  const current=sel.value;
+  const all=[...new Set([...membersRegistry.map(m=>m.name),...deposits.map(d=>d.member)])];
+  sel.innerHTML='<option value="">— Select a member —</option>';
+  all.forEach(n=>{const opt=document.createElement('option');opt.value=n;opt.textContent=n;if(n===current)opt.selected=true;sel.appendChild(opt);});
+}
+
+/* ══════════════════════════════════════════════
+   NAVIGATION
+══════════════════════════════════════════════ */
+const CONTRIBUTIONS_TABS=new Set(['deposits','withdrawals','ownership']);
+const PORTFOLIO_TABS=new Set(['profit','port-register','port-purchases','port-sales','port-income']);
+const MEMBERS_TABS=new Set(['members','membership']);
+const SETTINGS_SUB_LABELS={'fund-identity':'Fund Identity','brokers':'Brokers','asset-types':'Asset Types','data-storage':'Data Storage','audit-log':'Audit Log'};
+
+function closeAllSubmenus(){
+  ['overview','contributions','portfolio','members','settings'].forEach(k=>{
+    const sub=document.getElementById(k+'-submenu');if(sub)sub.style.display='none';
+    const arr=document.getElementById(k+'-arrow');if(arr)arr.style.transform='';
+    const btn=document.getElementById('nav-'+k);if(btn)btn.classList.remove('active');
+  });
+}
+function switchTab(id,btn){
+  const isContrib=CONTRIBUTIONS_TABS.has(id);const isPortfolio=PORTFOLIO_TABS.has(id);const isMembers=MEMBERS_TABS.has(id);
+  closeAllSubmenus();
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('panel-'+id).classList.add('active');
+  btn.classList.add('active');
+  if(isContrib){openSubmenu('contributions');}
+  if(isPortfolio){openSubmenu('portfolio');}
+  if(isMembers){openSubmenu('members');}
+  if(id==='kyc'){
+    openSubmenu('settings');
+    document.querySelectorAll('#settings-submenu .sub-btn').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+  }
+  const portLabels={profit:'Portfolio — Profit','port-register':'Portfolio — Register','port-purchases':'Portfolio — Purchases','port-sales':'Portfolio — Sales','port-income':'Portfolio — Income'};
+  const contribLabels={deposits:'Contributions — Deposits',withdrawals:'Contributions — Withdrawals',ownership:'Contributions — Ownership'};
+  const memberLabels={members:'Members — Member list',membership:'Members — Membership'};
+  const ts=document.getElementById('topbar-section');
+  if(ts)ts.textContent=portLabels[id]||contribLabels[id]||memberLabels[id]||id.charAt(0).toUpperCase()+id.slice(1);
+  if(id==='members')renderMemberPills();
+  if(id==='membership')renderMemberRegistry();
+  if(id==='kyc'){updateKYCMemberDropdown();renderKYCMembersOverview();}
+  if(id==='ownership')renderOwnership();
+  if(id==='withdrawals'){renderWithdrawalLedger();checkWithdrawalLockIn();}
+  if(id==='port-register')renderPortfolioRegister();
+  if(id==='port-purchases'){syncPurchaseAssetDropdown();renderPurchaseLedger();}
+  if(id==='port-income'){syncIncomeAssetDropdown();renderIncomeLedger();}
+  if(id==='profit'){renderNAVHistory();updateProfitUnitSummary();renderProfitHistory();checkProfitLockIn();}
+}
+function openSubmenu(key){
+  const sub=document.getElementById(key+'-submenu');if(sub)sub.style.display='block';
+  const arr=document.getElementById(key+'-arrow');if(arr)arr.style.transform='rotate(180deg)';
+  const btn=document.getElementById('nav-'+key);if(btn)btn.classList.add('active');
+}
+function toggleOverviewMenu(btn){
+  const isOpen=document.getElementById('overview-submenu').style.display==='block';
+  closeAllSubmenus();
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn:not(.sub-btn)').forEach(b=>b.classList.remove('active'));
+  if(!isOpen){
+    document.getElementById('panel-overview').classList.add('active');
+    openSubmenu('overview');btn.classList.add('active');
+    const activeSub=document.querySelector('#overview-submenu .sub-btn.active');
+    if(!activeSub){const first=document.getElementById('nav-ov-fund');if(first)switchOverviewTab('ov-fund',first);}
+    else{renderOverview();renderCharts();}
+    const ts=document.getElementById('topbar-section');if(ts)ts.textContent='Overview';
+  }
+}
+function switchOverviewTab(subId,btn){
+  closeAllSubmenus();
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn:not(.sub-btn)').forEach(b=>b.classList.remove('active'));
+  document.getElementById('panel-overview').classList.add('active');
+  openSubmenu('overview');document.getElementById('nav-overview').classList.add('active');
+  document.querySelectorAll('.overview-sub').forEach(p=>p.style.display='none');
+  const target=document.getElementById('overview-'+subId);if(target)target.style.display='block';
+  document.querySelectorAll('#overview-submenu .sub-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  const labels={'ov-fund':'Overview — Fund Summary','ov-members':'Overview — Member Units'};
+  const ts=document.getElementById('topbar-section');if(ts)ts.textContent=labels[subId]||'Overview';
+  renderOverview();if(subId==='ov-fund')renderCharts();
+}
+function toggleContributionsMenu(btn){
+  const isOpen=document.getElementById('contributions-submenu').style.display==='block';
+  closeAllSubmenus();document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));document.querySelectorAll('.tab-btn:not(.sub-btn)').forEach(b=>b.classList.remove('active'));
+  if(!isOpen){openSubmenu('contributions');btn.classList.add('active');const first=document.getElementById('nav-deposits');if(first)switchTab('deposits',first);}
+}
+function togglePortfolioMenu(btn){
+  const isOpen=document.getElementById('portfolio-submenu').style.display==='block';
+  closeAllSubmenus();document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));document.querySelectorAll('.tab-btn:not(.sub-btn)').forEach(b=>b.classList.remove('active'));
+  if(!isOpen){openSubmenu('portfolio');btn.classList.add('active');const first=document.getElementById('nav-profit');if(first)switchTab('profit',first);}
+}
+function toggleMembersMenu(btn){
+  const isOpen=document.getElementById('members-submenu').style.display==='block';
+  closeAllSubmenus();document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));document.querySelectorAll('.tab-btn:not(.sub-btn)').forEach(b=>b.classList.remove('active'));
+  if(!isOpen){openSubmenu('members');btn.classList.add('active');const first=document.getElementById('nav-members-list');if(first)switchTab('members',first);}
+}
+function toggleSettingsMenu(btn){
+  const isOpen=document.getElementById('settings-submenu').style.display==='block';
+  closeAllSubmenus();document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));document.querySelectorAll('.tab-btn:not(.sub-btn)').forEach(b=>b.classList.remove('active'));
+  if(!isOpen){
+    document.getElementById('panel-settings').classList.add('active');
+    openSubmenu('settings');btn.classList.add('active');
+    const activeSub=document.querySelector('#settings-submenu .sub-btn.active');
+    if(!activeSub){const first=document.getElementById('nav-fund-identity');if(first)switchSettingsTab('fund-identity',first);}
+    const ts=document.getElementById('topbar-section');if(ts)ts.textContent='Settings';
+  }
+}
+function switchSettingsTab(subId,btn){
+  closeAllSubmenus();
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn:not(.sub-btn)').forEach(b=>b.classList.remove('active'));
+  document.getElementById('panel-settings').classList.add('active');
+  openSubmenu('settings');document.getElementById('nav-settings').classList.add('active');
+  document.querySelectorAll('.settings-sub').forEach(p=>p.style.display='none');
+  const target=document.getElementById('settings-'+subId);if(target)target.style.display='block';
+  document.querySelectorAll('#settings-submenu .sub-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  const ts=document.getElementById('topbar-section');if(ts)ts.textContent='Settings — '+(SETTINGS_SUB_LABELS[subId]||subId);
+  if(subId==='audit-log')renderAuditLog();
+  if(subId==='data-storage')updateStorageMeter();
+}
+
+/* init — auth listener handles everything */
+</script>
+</body>
+</html>
