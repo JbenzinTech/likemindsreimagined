@@ -3,9 +3,12 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Like Minds Reimagined — v3.25.0</title>
+<title>Like Minds Reimagined — v3.26.0</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore-compat.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:14px;background:#f4f4f2;color:#1a1a18;min-height:100vh;display:flex;flex-direction:column}
@@ -172,6 +175,15 @@ tr:last-child td{border-bottom:none}
     <div style="margin-bottom:16px"><label>Confirm password</label><input id="setup-password2" type="password" placeholder="Repeat password"/></div>
     <div id="setup-error" style="color:#a32d2d;font-size:12px;margin-bottom:10px"></div>
     <button class="btn-primary" style="width:100%;padding:10px" onclick="createFirstAdmin()">Create Admin account &amp; continue</button>
+    <div style="text-align:center;margin-top:16px">
+      <a href="#" onclick="toggleConnectExistingFund(event)" style="font-size:12px;color:#378add;text-decoration:none">Already have a fund on another device? Connect with your sync code</a>
+    </div>
+    <div id="setup-connect-existing" style="display:none;margin-top:14px;border-top:0.5px solid #d3d1c7;padding-top:14px">
+      <label>Sync code</label>
+      <input id="setup-sync-code" type="password" placeholder="Enter your fund's sync code" onkeydown="if(event.key==='Enter')connectToExistingFund()"/>
+      <div id="setup-sync-error" style="font-size:12px;margin:8px 0"></div>
+      <button style="width:100%;padding:9px" onclick="connectToExistingFund()">Connect &amp; pull fund data</button>
+    </div>
   </div>
 </div>
 
@@ -588,7 +600,7 @@ tr:last-child td{border-bottom:none}
       </div>
     </div>
     <div class="card">
-      <div class="card-title">User accounts <span style="font-weight:400;text-transform:none;letter-spacing:0;font-size:11px;color:#888780">&mdash; stored locally on this device, not included in fund data backups</span></div>
+      <div class="card-title">User accounts <span style="font-weight:400;text-transform:none;letter-spacing:0;font-size:11px;color:#888780">&mdash; stored locally on this device by default; shared across devices if Cloud Sync is enabled (Settings &rarr; Data Storage); never included in manual JSON backups</span></div>
       <div id="users-table-wrap"><div class="empty">No users yet.</div></div>
     </div>
   </div>
@@ -616,6 +628,41 @@ tr:last-child td{border-bottom:none}
           <div class="hint" id="import-msg"></div>
         </div>
       </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Cloud Sync</div>
+      <div style="font-size:13px;color:#5f5e5a;line-height:1.6;margin-bottom:14px">
+        Set a sync code below, then enter the <strong>same code</strong> on every device this fund is managed from.
+        All fund data <strong>and user accounts (including passwords)</strong> are shared across every device using
+        that code — treat it like a master password for the fund. Once set, changes save to the cloud automatically
+        while you're online; if you go offline, changes are held locally and sync automatically once you reconnect.
+        A brand-new device can also connect to an existing fund from the login screen, before creating any local
+        account — see "Already have a fund on another device?" there.
+      </div>
+      <div class="row">
+        <div class="f2">
+          <label>Sync code</label>
+          <input id="lmr-sync-code-input" type="password" placeholder="Choose a private phrase for this fund"/>
+        </div>
+        <div style="flex:0;display:flex;gap:6px;align-items:flex-end">
+          <button class="btn-primary" onclick="setSyncCode()">Set / Change code</button>
+          <button onclick="toggleSyncCodeVisibility()" id="lmr-sync-code-toggle-btn">&#128065; Show</button>
+        </div>
+      </div>
+      <div id="lmr-sync-status" style="margin-top:8px"></div>
+      <div id="lmr-last-sync-display" style="margin-top:4px;font-size:11px;color:#888780;font-weight:600"></div>
+    </div>
+
+    <div class="card" id="lmr-sync-actions-card" style="display:none">
+      <div class="card-title">Manual sync</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn-primary" onclick="syncNow()">&#8635; Sync now</button>
+        <button onclick="pushToCloud()">&#8593; Push local &rarr; cloud (overwrite cloud)</button>
+        <button onclick="pullFromCloud()">&#8595; Pull cloud &rarr; local (overwrite local)</button>
+        <button class="btn-danger" onclick="disconnectSync()">&#128268; Disconnect this device</button>
+      </div>
+      <div class="hint" style="margin-top:8px">Sync now pushes if this device has unsynced local edits, otherwise pulls the latest cloud copy. Push/Pull force a direction — use them if something looks out of sync. A pull also refreshes user accounts and roles from the cloud, and will log you out if your account was changed or removed elsewhere.</div>
     </div>
   </div>
 
@@ -1669,6 +1716,290 @@ let allocationTargets=[]; // [{id, assetType, targetPct, note}]
 let allocationHistory=[]; // [{id, date, action:'set'|'updated'|'removed', assetType, targetPct, previousPct, note, by}] — audit log of allocation target changes
 
 /* ══════════════════════════════════════════
+   CLOUD SYNC (Firebase Firestore)
+   One Firestore doc per sync-code hash, holding every fund-data field AND
+   `users`/`customRoles` — unlike the personal tracker this is modeled on,
+   LMR deliberately syncs login accounts too (per fund decision), so any
+   device holding the sync code can log in as any user of the fund. This
+   also means the code itself is now equivalent to a master password —
+   see the confirmation prompts in setSyncCode()/connectToExistingFund().
+   `appBooted` tracks whether bootApp() has already rendered the shell, so
+   pullFromCloud() knows whether to just write localStorage (pre-boot) or
+   also refresh in-memory state + the visible UI (mid-session pull).
+══════════════════════════════════════════ */
+const LMR_FIREBASE_CONFIG={
+  apiKey:"AIzaSyAnei9wfmfCs9ESItrxgeNzBWmFnvusqEo",
+  authDomain:"like-minds-reimagined.firebaseapp.com",
+  projectId:"like-minds-reimagined",
+  storageBucket:"like-minds-reimagined.firebasestorage.app",
+  messagingSenderId:"911074593922",
+  appId:"1:911074593922:web:03e8f1a631d294f102789b"
+};
+let fbAuth=null, fbDb=null, syncCode='', syncDocId=null, syncDebounceTimer=null, suppressAutoPush=false, appBooted=false;
+try{
+  firebase.initializeApp(LMR_FIREBASE_CONFIG);
+  fbAuth=firebase.auth();
+  fbDb=firebase.firestore();
+  fbDb.enablePersistence().catch(()=>{}); // non-fatal if multiple tabs open
+}catch(e){ console.warn('Firebase init failed:', e.message); }
+
+async function hashSyncCode(str){
+  const buf=await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+  return [...new Uint8Array(buf)].map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+async function ensureSignedIn(){
+  if(!fbAuth) throw new Error('Firebase not initialized');
+  if(!fbAuth.currentUser) await fbAuth.signInAnonymously();
+  return fbAuth.currentUser;
+}
+
+/* Every fund-data field save() persists, plus users/customRoles — always read
+   fresh from localStorage via loadUsers() so a push reflects the latest state
+   regardless of whether it was called pre-boot, post-login, or mid-session. */
+function gatherSyncPayload(){
+  loadUsers();
+  return {
+    deposits,withdrawals,portfolioItems,purchases,brokerRegistry,assetTypeRegistry,
+    navValuations,profitRounds,kycData,membersRegistry,transfers,sales,incomeRecords,
+    journalEntries,corporateActions,customAccounts,coaOverrides,fundLaunchNav,
+    allocationTargets,allocationHistory,stockHoldings,stockTxns,stockDividends,
+    settings:{fundName:document.getElementById('fund-name').value,currency:getCurrency(),
+      nav:document.getElementById('init-nav').value,startDate:document.getElementById('fund-start').value},
+    users,customRoles,
+    updatedAt:Date.now()
+  };
+}
+/* Writes a pulled cloud document straight to localStorage — both LS_KEY (fund
+   data) and USERS_KEY (accounts) — without touching in-memory state. Safe to
+   call before bootApp() has ever run; load()/loadUsers() pick it up naturally
+   afterward. `_v27:true` prevents load()'s legacy-migration branch from firing. */
+function writeCloudDataToLocalStorage(d){
+  const fundData={
+    deposits:d.deposits||[],withdrawals:d.withdrawals||[],portfolioItems:d.portfolioItems||[],
+    purchases:d.purchases||[],brokerRegistry:d.brokerRegistry||[],assetTypeRegistry:d.assetTypeRegistry||[],
+    navValuations:d.navValuations||[],profitRounds:d.profitRounds||[],kycData:d.kycData||{},
+    membersRegistry:d.membersRegistry||[],transfers:d.transfers||[],sales:d.sales||[],incomeRecords:d.incomeRecords||[],
+    journalEntries:d.journalEntries||[],corporateActions:d.corporateActions||[],customAccounts:d.customAccounts||[],
+    coaOverrides:d.coaOverrides||{},fundLaunchNav:(d.fundLaunchNav!=null?d.fundLaunchNav:null),
+    allocationTargets:d.allocationTargets||[],allocationHistory:d.allocationHistory||[],
+    stockHoldings:d.stockHoldings||[],stockTxns:d.stockTxns||[],stockDividends:d.stockDividends||[],
+    _v27:true,settings:d.settings||{}
+  };
+  localStorage.setItem(LS_KEY,JSON.stringify(fundData));
+  localStorage.setItem(USERS_KEY,JSON.stringify({users:d.users||[],customRoles:d.customRoles||[]}));
+}
+
+async function pushToCloud(){
+  if(!syncDocId){ renderSyncStatus('Set a sync code first.', true); return; }
+  try{
+    await ensureSignedIn();
+    const payload=gatherSyncPayload();
+    await fbDb.collection('lmrSync').doc(syncDocId).set(payload);
+    localStorage.setItem('lmr_local_version', String(payload.updatedAt));
+    localStorage.setItem('lmr_sync_initialized','true');
+    localStorage.removeItem('lmr_pending_sync');
+    renderSyncStatus('&#10003; Synced to cloud — '+new Date().toLocaleTimeString());
+    recordSyncTime();
+  }catch(e){
+    localStorage.setItem('lmr_pending_sync','true');
+    renderSyncStatus('&#10007; Sync failed, will retry — '+e.message, true);
+    console.warn('LMR cloud push failed:', e.message);
+  }
+}
+
+async function pullFromCloud(){
+  if(!syncDocId){ renderSyncStatus('Set a sync code first.', true); return; }
+  try{
+    await ensureSignedIn();
+    const docSnap=await fbDb.collection('lmrSync').doc(syncDocId).get();
+    if(!docSnap.exists){
+      renderSyncStatus("No cloud data yet for this code — uploading this device's data to start.");
+      await pushToCloud();
+      return;
+    }
+    const d=docSnap.data();
+    writeCloudDataToLocalStorage(d);
+    localStorage.setItem('lmr_local_version', String(d.updatedAt||Date.now()));
+    localStorage.setItem('lmr_sync_initialized','true');
+    if(appBooted){
+      suppressAutoPush=true;
+      loadUsers();
+      if(currentUser){
+        const stillValid=users.find(u=>u.id===currentUser.id&&u.active!==false);
+        if(!stillValid){
+          suppressAutoPush=false;
+          alert('Your account was changed or removed by a sync from another device. Please log in again.');
+          logout();
+          return;
+        }
+        const fresh=users.find(u=>u.id===currentUser.id);
+        if(fresh){
+          currentUser={id:fresh.id,username:fresh.username,role:fresh.role,linkedMemberName:fresh.linkedMemberName||null};
+          sessionStorage.setItem('lmr_session',JSON.stringify(currentUser));
+        }
+      }
+      load();
+      applyRolePermissions();
+      syncUserRoleDropdown();
+      if(document.getElementById('settings-users')&&document.getElementById('settings-users').style.display!=='none') renderUsersTable();
+      if(document.getElementById('settings-roles')&&document.getElementById('settings-roles').style.display!=='none') renderRolesTable();
+      suppressAutoPush=false;
+    }
+    renderSyncStatus('&#10003; Pulled from cloud — '+new Date().toLocaleTimeString());
+    recordSyncTime();
+  }catch(e){
+    renderSyncStatus('&#10007; Pull failed — '+e.message, true);
+    console.warn('LMR cloud pull failed:', e.message);
+  }
+}
+
+async function syncNow(){
+  if(!syncDocId){ renderSyncStatus('Set a sync code first.', true); return; }
+  try{
+    await ensureSignedIn();
+    if(localStorage.getItem('lmr_pending_sync')==='true'){ await pushToCloud(); return; }
+    await pullFromCloud();
+  }catch(e){ renderSyncStatus('&#10007; Sync failed — '+e.message, true); }
+}
+
+/* Debounced auto-push, called from save() and saveUsers(). Guards against
+   pushing while a pull is actively being applied (suppressAutoPush) and
+   against pushing while offline (queues a pending flag instead, flushed by
+   the 'online' listener below). */
+function scheduleAutoPush(){
+  if(!syncDocId||suppressAutoPush) return;
+  clearTimeout(syncDebounceTimer);
+  if(!navigator.onLine){
+    localStorage.setItem('lmr_pending_sync','true');
+    renderSyncStatus('Offline — saved locally, will sync to the cloud automatically once back online.');
+    return;
+  }
+  syncDebounceTimer=setTimeout(()=>{ pushToCloud(); }, 600);
+}
+window.addEventListener('online', ()=>{
+  if(syncDocId && localStorage.getItem('lmr_pending_sync')==='true') pushToCloud();
+});
+window.addEventListener('offline', ()=>{
+  if(syncDocId) renderSyncStatus('Offline — saved locally, will sync to the cloud automatically once back online.');
+});
+
+function recordSyncTime(){
+  localStorage.setItem('lmr_last_synced', String(Date.now()));
+  renderLastSyncDisplay();
+}
+function renderLastSyncDisplay(){
+  const el=document.getElementById('lmr-last-sync-display');
+  if(!el) return;
+  if(!syncCode){ el.textContent=''; return; }
+  const ts=localStorage.getItem('lmr_last_synced');
+  el.textContent = ts ? '&#128337; Last synced: '+new Date(parseInt(ts)).toLocaleString() : '&#128337; Not synced yet on this device.';
+}
+function renderSyncStatus(msg,isError){
+  const el=document.getElementById('lmr-sync-status');
+  if(!el) return;
+  if(!msg){ el.innerHTML=''; return; }
+  el.innerHTML=`<span style="font-size:12px;color:${isError?'#a32d2d':'#3b6d11'}">${msg}</span>`;
+}
+function renderSyncPanel(){
+  renderLastSyncDisplay();
+  const card=document.getElementById('lmr-sync-actions-card');
+  if(!card) return;
+  if(syncCode){
+    card.style.display='block';
+    const input=document.getElementById('lmr-sync-code-input');
+    if(input && !input.value) input.value=syncCode;
+    renderSyncStatus('Connected — changes sync to the cloud automatically while online.');
+  } else {
+    card.style.display='none';
+  }
+}
+function toggleSyncCodeVisibility(){
+  const input=document.getElementById('lmr-sync-code-input');
+  const btn=document.getElementById('lmr-sync-code-toggle-btn');
+  if(!input) return;
+  if(input.type==='password'){ input.type='text'; if(btn) btn.textContent='&#128584; Hide'; }
+  else { input.type='password'; if(btn) btn.textContent='&#128065; Show'; }
+}
+
+/* Setting/changing the sync code from within Settings (post-login). Because
+   user accounts are now part of the synced payload, connecting to a code
+   that already has cloud data will REPLACE this device's local users —
+   explicitly confirmed here rather than silently overwritten, since that's
+   a materially bigger risk than overwriting fund figures alone. */
+async function setSyncCode(){
+  const val=document.getElementById('lmr-sync-code-input').value.trim();
+  if(!val){alert('Enter a sync code.');return;}
+  if(val.length<8 && !confirm('Short codes are easier for others to guess. Anyone with this code can read AND change your fund data and user accounts. Use it anyway?')) return;
+  if(!navigator.onLine){alert('You appear to be offline. Connect to the internet to set up cloud sync.');return;}
+  const prevCode=localStorage.getItem('lmr_sync_code')||'';
+  try{
+    const hash=await hashSyncCode(val);
+    await ensureSignedIn();
+    const docSnap=await fbDb.collection('lmrSync').doc(hash).get();
+    if(docSnap.exists && val!==prevCode){
+      if(!confirm("A fund already exists in the cloud under this code.\n\nConnecting will REPLACE all data and user accounts on this device with the cloud copy — including logins. Make sure you know a valid username and password for that fund before continuing.\n\nContinue and pull the cloud copy?")) return;
+    }
+    localStorage.setItem('lmr_sync_code', val);
+    syncCode=val; syncDocId=hash;
+    if(val!==prevCode) localStorage.removeItem('lmr_sync_initialized');
+    renderSyncPanel();
+    renderSyncStatus('Connecting…');
+    if(docSnap.exists){ await pullFromCloud(); }
+    else { await pushToCloud(); }
+  }catch(e){
+    renderSyncStatus('&#10007; Connection failed — '+e.message, true);
+  }
+}
+function disconnectSync(){
+  if(!confirm("Disconnect this device from cloud sync? Local data and user accounts stay as they are — this device just stops syncing until you enter the code again."))return;
+  localStorage.removeItem('lmr_sync_code');
+  localStorage.removeItem('lmr_sync_initialized');
+  syncCode=''; syncDocId=null;
+  const input=document.getElementById('lmr-sync-code-input'); if(input) input.value='';
+  renderSyncPanel();
+}
+
+/* Pre-login "Connect to an existing fund" flow, offered on the first-run
+   Admin-setup screen (shown when this device has zero local users). Lets a
+   brand-new device pull an existing cloud fund — including its users — so
+   the person logs in with their existing account instead of creating a
+   duplicate local admin for what's really the same fund. */
+async function connectToExistingFund(){
+  const code=document.getElementById('setup-sync-code').value.trim();
+  const errEl=document.getElementById('setup-sync-error');
+  errEl.style.color='#5f5e5a';
+  if(!code){errEl.textContent='Enter the sync code.';errEl.style.color='#a32d2d';return;}
+  if(!navigator.onLine){errEl.textContent='You appear to be offline — connect to the internet first.';errEl.style.color='#a32d2d';return;}
+  errEl.textContent='Connecting…';
+  try{
+    const hash=await hashSyncCode(code);
+    await ensureSignedIn();
+    const docSnap=await fbDb.collection('lmrSync').doc(hash).get();
+    if(!docSnap.exists){
+      errEl.textContent='No fund found for that code. Check the code, or create a new fund above instead.';
+      errEl.style.color='#a32d2d';
+      return;
+    }
+    writeCloudDataToLocalStorage(docSnap.data());
+    localStorage.setItem('lmr_sync_code',code);
+    localStorage.setItem('lmr_sync_initialized','true');
+    localStorage.setItem('lmr_last_synced', String(Date.now()));
+    syncCode=code; syncDocId=hash;
+    errEl.style.color='#27500a';
+    errEl.textContent='Connected — loading your fund…';
+    setTimeout(()=>{ bootApp(); },500);
+  }catch(e){
+    errEl.style.color='#a32d2d';
+    errEl.textContent='Connection failed: '+e.message;
+  }
+}
+function toggleConnectExistingFund(e){
+  if(e)e.preventDefault();
+  const el=document.getElementById('setup-connect-existing');
+  if(el) el.style.display=el.style.display==='none'?'block':'none';
+}
+
+/* ══════════════════════════════════════════
    AUTHENTICATION & ACCESS CONTROL
 ══════════════════════════════════════════ */
 const USERS_KEY='inv_club_v2_users';
@@ -1787,7 +2118,7 @@ async function hashPassword(pw){
   return [...new Uint8Array(buf)].map(b=>b.toString(16).padStart(2,'0')).join('');
 }
 function saveUsers(){
-  try{localStorage.setItem(USERS_KEY,JSON.stringify({users,customRoles}));}catch(e){console.error('Failed to save users',e);}
+  try{localStorage.setItem(USERS_KEY,JSON.stringify({users,customRoles}));scheduleAutoPush();}catch(e){console.error('Failed to save users',e);}
 }
 function loadUsers(){
   try{
@@ -1872,6 +2203,7 @@ function bootApp(){
   }
 
   load();
+  appBooted=true;
   const fundName=document.getElementById('fund-name').value||'Investment Manager';
 
   if(currentUser.role==='Member'){
@@ -1891,6 +2223,7 @@ function bootApp(){
   updateKYCMemberDropdown();
   updateDepNavHint();
   checkDepNavStaleness();
+  renderSyncPanel();
 }
 
 /* Hide Settings & KYC for Manager role; Admin sees everything */
@@ -2737,7 +3070,7 @@ function save(){
     stockHoldings,stockTxns,stockDividends,_v27:true,
     settings:{fundName:document.getElementById('fund-name').value,currency:getCurrency(),
     nav:document.getElementById('init-nav').value,startDate:document.getElementById('fund-start').value}};
-  try{localStorage.setItem(LS_KEY,JSON.stringify(data));setStatus('Saved to device — '+new Date().toLocaleTimeString());}
+  try{localStorage.setItem(LS_KEY,JSON.stringify(data));setStatus('Saved to device — '+new Date().toLocaleTimeString());scheduleAutoPush();}
   catch(e){setStatus('Save failed: '+e.message);}
 }
 function load(){
@@ -7588,6 +7921,7 @@ function switchSettingsTab(subId,btn){
   if(ts)ts.textContent=topbarPrefix+(SETTINGS_SUB_LABELS[subId]||subId);
   if(subId==='users') renderUsersTable();
   if(subId==='roles') renderRolesTable();
+  if(subId==='data-storage') renderSyncPanel();
 }
 
 /* ══════════════════════════════════════════
@@ -8446,9 +8780,23 @@ const PORTFOLIO_TABS=new Set(['profit','port-register','port-purchases','port-sa
 const MEMBERS_TABS=new Set(['members','membership','kyc']);
 const ACCOUNTING_TABS=new Set(['journal','ledger','trial-balance','statements','corp-actions','coa']);
 
-// Boot: check auth state first — shows setup, login, member portal, or full app
+// Boot: check auth state first — shows setup, login, member portal, or full app.
+// If this device has a saved sync code, refresh from (or flush pending edits to)
+// the cloud BEFORE deciding setup-vs-login, so a returning device always sees the
+// latest shared user list rather than a stale local snapshot. load()/loadUsers()
+// are called explicitly here since bootApp() itself hasn't populated in-memory
+// state yet at this point — pushToCloud()/pullFromCloud() need fresh data to work with.
 setTimeout(()=>{
-  bootApp();
+  const savedCode=localStorage.getItem('lmr_sync_code')||'';
+  if(!savedCode){ bootApp(); return; }
+  load();
+  loadUsers();
+  hashSyncCode(savedCode).then(hash=>{
+    syncCode=savedCode; syncDocId=hash;
+    if(!navigator.onLine){ bootApp(); return; }
+    const action = (localStorage.getItem('lmr_pending_sync')==='true') ? pushToCloud() : pullFromCloud();
+    action.then(()=>bootApp()).catch(()=>bootApp());
+  }).catch(()=>bootApp());
 },0);
 </script>
 </body>
