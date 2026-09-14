@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Like Minds Reimagined — v3.26.0</title>
+<title>Like Minds Reimagined — v3.27.0</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
@@ -208,11 +208,28 @@ tr:last-child td{border-bottom:none}
     <div class="hero-sub">— My Account —</div>
     <div class="hero-actions">
       <span class="hbtn" style="cursor:default" id="portal-user-label">Logged in</span>
+      <button class="hbtn" onclick="toggleChangePasswordPanel()">Change password</button>
       <button class="hbtn danger" onclick="logout()">Log out</button>
     </div>
   </div>
   <div style="max-width:900px;margin:0 auto;padding:16px;width:100%">
     <div id="member-portal-content"></div>
+  </div>
+</div>
+
+<!-- ── Change password overlay (shared by member portal & app shell) ── -->
+<div id="change-password-panel" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:60;align-items:center;justify-content:center;padding:20px">
+  <div style="background:#fff;border-radius:14px;padding:26px;max-width:360px;width:100%">
+    <div style="font-weight:700;font-size:15px;margin-bottom:4px">Change password</div>
+    <div style="font-size:12px;color:#888780;margin-bottom:16px">Updates your own login password.</div>
+    <div style="margin-bottom:10px"><label>Current password</label><input id="cp-current" type="password"/></div>
+    <div style="margin-bottom:10px"><label>New password</label><input id="cp-new" type="password" placeholder="At least 4 characters"/></div>
+    <div style="margin-bottom:14px"><label>Confirm new password</label><input id="cp-confirm" type="password"/></div>
+    <div id="cp-error" style="color:#a32d2d;font-size:12px;margin-bottom:10px"></div>
+    <div style="display:flex;gap:8px">
+      <button class="btn-primary" style="flex:1" onclick="submitChangePassword()">Update password</button>
+      <button style="flex:1" onclick="toggleChangePasswordPanel()">Cancel</button>
+    </div>
   </div>
 </div>
 
@@ -225,6 +242,7 @@ tr:last-child td{border-bottom:none}
   <div class="hero-sub">— Let's Build Wealth Together —</div>
   <div class="hero-actions">
     <span class="hbtn" style="cursor:default" id="app-user-label">Logged in</span>
+    <button class="hbtn" onclick="toggleChangePasswordPanel()">Change password</button>
     <button class="hbtn danger" onclick="logout()">Log out</button>
   </div>
 </div>
@@ -1726,6 +1744,11 @@ let allocationHistory=[]; // [{id, date, action:'set'|'updated'|'removed', asset
    `appBooted` tracks whether bootApp() has already rendered the shell, so
    pullFromCloud() knows whether to just write localStorage (pre-boot) or
    also refresh in-memory state + the visible UI (mid-session pull).
+   v3.27.0 note: `users` entries no longer carry the real credential — accounts created or
+   migrated from this version on hold a `firebaseUid` and `passwordHash:null`; the password
+   itself lives only in Firebase Auth (shared automatically across every device, independent
+   of this sync channel). Pre-upgrade accounts still sync their legacy `passwordHash` until
+   the person logs in once, at which point attemptLogin() migrates them and that field clears.
 ══════════════════════════════════════════ */
 const LMR_FIREBASE_CONFIG={
   apiKey:"AIzaSyAnei9wfmfCs9ESItrxgeNzBWmFnvusqEo",
@@ -2003,7 +2026,7 @@ function toggleConnectExistingFund(e){
    AUTHENTICATION & ACCESS CONTROL
 ══════════════════════════════════════════ */
 const USERS_KEY='inv_club_v2_users';
-let users=[]; // [{id,username,passwordHash,role,linkedMemberName,active,createdAt}]
+let users=[]; // [{id,username,firebaseUid,passwordHash(legacy,null once migrated),role,linkedMemberName,active,createdAt}]
 let currentUser=null; // {id,username,role,linkedMemberName}
 let customRoles=[]; // [{id,name,permissions:{overview,contributions,portfolio,accounting,members,kyc,settings,users},builtin:false}]
 
@@ -2112,6 +2135,48 @@ const TAB_BUTTON_ID_MAP={
   'fund-identity':'nav-fund-identity','brokers':'nav-brokers','asset-types':'nav-asset-types','coa':'nav-coa','data-storage':'nav-data-storage',
 };
 
+/* ── Real Firebase Auth accounts, with a username UX on top ──
+   Firebase Auth has no native "username" identity, so each username maps to a synthetic,
+   undeliverable email (username@lmr-accounts.internal) used only as the Auth identifier —
+   the person never sees or types it. This gives every LMR user a real Firebase Auth UID
+   (step 1 of the security upgrade) while the login screen still just asks for
+   Username / Password. Because the email is synthetic, Firebase's "forgot password" email
+   flow can't be used yet — self-service password change (requires the current password)
+   is supported below; an admin-driven reset for someone who's forgotten their password is
+   not yet possible client-side and needs a server-side step (Cloud Functions — see
+   security_improvement.md, step 4). Legacy accounts created before this version still carry
+   a local SHA-256 passwordHash; attemptLogin() transparently upgrades them to a real Firebase
+   account the first time that legacy password is used successfully (see attemptLogin below).
+   NEVER surface the synthetic email to the user or store it — it's derived from username on
+   demand, so a later username change or export never needs to touch it. */
+const LMR_AUTH_EMAIL_DOMAIN='@lmr-accounts.internal';
+function usernameToAuthEmail(username){
+  const clean=username.trim().toLowerCase().replace(/[^a-z0-9._-]/g,'');
+  return clean+LMR_AUTH_EMAIL_DOMAIN;
+}
+/* A second, independent Firebase App instance with its own Auth state — used only when an
+   Admin creates ANOTHER user's account while already logged in themselves. Firebase's
+   client SDK signs you in as whichever account you just created/signed-into on a given Auth
+   instance, so calling createUserWithEmailAndPassword on the PRIMARY app (fbAuth) would
+   silently replace the admin's own session with the new user's. Creating the account on this
+   secondary instance instead, then signing it back out, leaves the admin's real session (on
+   fbAuth) untouched throughout. */
+let fbSecondaryApp=null, fbSecondaryAuth=null;
+function getSecondaryAuth(){
+  if(!fbSecondaryAuth){
+    fbSecondaryApp=firebase.initializeApp(LMR_FIREBASE_CONFIG,'lmrSecondary');
+    fbSecondaryAuth=fbSecondaryApp.auth();
+  }
+  return fbSecondaryAuth;
+}
+async function createFirebaseAuthAccountFor(username,password){
+  const auth=getSecondaryAuth();
+  const cred=await auth.createUserWithEmailAndPassword(usernameToAuthEmail(username),password);
+  const uid=cred.user.uid;
+  await auth.signOut();
+  return uid;
+}
+
 async function hashPassword(pw){
   const enc=new TextEncoder().encode(pw);
   const buf=await crypto.subtle.digest('SHA-256',enc);
@@ -2143,8 +2208,17 @@ async function createFirstAdmin(){
   if(!username){errEl.textContent='Enter a username.';return;}
   if(!password||password.length<4){errEl.textContent='Password must be at least 4 characters.';return;}
   if(password!==password2){errEl.textContent='Passwords do not match.';return;}
-  const hash=await hashPassword(password);
-  const newUser={id:Date.now(),username,passwordHash:hash,role:'Admin',linkedMemberName:null,active:true,createdAt:new Date().toISOString()};
+  let uid;
+  try{
+    const cred=await fbAuth.createUserWithEmailAndPassword(usernameToAuthEmail(username),password);
+    uid=cred.user.uid;
+  }catch(e){
+    errEl.textContent=(e.code==='auth/operation-not-allowed')
+      ?'Email/Password sign-in isn\'t enabled on this fund\'s Firebase project yet — enable it in the Firebase console under Authentication → Sign-in method.'
+      :'Could not create the account: '+e.message;
+    return;
+  }
+  const newUser={id:Date.now(),username,firebaseUid:uid,passwordHash:null,role:'Admin',linkedMemberName:null,active:true,createdAt:new Date().toISOString()};
   users.push(newUser);
   saveUsers();
   currentUser={id:newUser.id,username:newUser.username,role:'Admin',linkedMemberName:null};
@@ -2158,20 +2232,87 @@ async function attemptLogin(){
   const errEl=document.getElementById('login-error');
   errEl.textContent='';
   if(!username||!password){errEl.textContent='Enter username and password.';return;}
-  const hash=await hashPassword(password);
-  const user=users.find(u=>u.username.toLowerCase()===username.toLowerCase());
-  if(!user||user.active===false||user.passwordHash!==hash){
-    errEl.textContent='Invalid username or password.';
+  const localUser=users.find(u=>u.username.toLowerCase()===username.toLowerCase());
+  const email=usernameToAuthEmail(username);
+  try{
+    await fbAuth.signInWithEmailAndPassword(email,password);
+    if(!localUser||localUser.active===false){
+      // Firebase accepted the credential but this fund has no matching/active user record —
+      // shouldn't normally happen, but don't grant access to a dangling Auth account.
+      await fbAuth.signOut();
+      errEl.textContent='Invalid username or password.';
+      return;
+    }
+    currentUser={id:localUser.id,username:localUser.username,role:localUser.role,linkedMemberName:localUser.linkedMemberName||null};
+    sessionStorage.setItem('lmr_session',JSON.stringify(currentUser));
+    bootApp();
     return;
+  }catch(fbErr){
+    // No Firebase account for this username yet (or wrong password against one that exists).
+    // If this is a pre-upgrade local account, verify against its legacy hash one last time —
+    // and if it matches, transparently create the real Firebase account behind the scenes
+    // and retire the legacy hash, so the person just logs in as normal.
+    if(localUser&&localUser.passwordHash&&localUser.active!==false){
+      const legacyHash=await hashPassword(password);
+      if(legacyHash===localUser.passwordHash){
+        try{
+          const cred=await fbAuth.createUserWithEmailAndPassword(email,password);
+          localUser.firebaseUid=cred.user.uid;
+          localUser.passwordHash=null;
+          saveUsers();
+          currentUser={id:localUser.id,username:localUser.username,role:localUser.role,linkedMemberName:localUser.linkedMemberName||null};
+          sessionStorage.setItem('lmr_session',JSON.stringify(currentUser));
+          bootApp();
+          return;
+        }catch(migrateErr){
+          errEl.textContent='Signed in, but upgrading your account failed ('+migrateErr.message+'). Please try again.';
+          return;
+        }
+      }
+    }
+    errEl.textContent='Invalid username or password.';
   }
-  currentUser={id:user.id,username:user.username,role:user.role,linkedMemberName:user.linkedMemberName||null};
-  sessionStorage.setItem('lmr_session',JSON.stringify(currentUser));
-  bootApp();
 }
 
 function logout(){
   sessionStorage.removeItem('lmr_session');
-  location.reload();
+  if(fbAuth&&fbAuth.currentUser) fbAuth.signOut().finally(()=>location.reload());
+  else location.reload();
+}
+
+/* ── Self-service password change (all roles, including Member) ──
+   Requires the current password (Firebase's reauthenticateWithCredential) before allowing
+   updatePassword — this is Firebase's own recency-of-login safeguard, not something we add.
+   Only works once an account has been upgraded to a real Firebase Auth login (see the
+   migration note above attemptLogin) — a not-yet-migrated legacy account won't have
+   fbAuth.currentUser set and is told to log in first, which upgrades it automatically. */
+function toggleChangePasswordPanel(){
+  const el=document.getElementById('change-password-panel');
+  if(!el)return;
+  const showing=el.style.display==='flex';
+  el.style.display=showing?'none':'flex';
+  ['cp-current','cp-new','cp-confirm'].forEach(id=>{const f=document.getElementById(id);if(f)f.value='';});
+  const err=document.getElementById('cp-error');if(err)err.textContent='';
+}
+async function submitChangePassword(){
+  const cur=document.getElementById('cp-current').value;
+  const nw=document.getElementById('cp-new').value;
+  const conf=document.getElementById('cp-confirm').value;
+  const err=document.getElementById('cp-error');
+  err.textContent='';
+  if(!cur||!nw||!conf){err.textContent='Fill in all fields.';return;}
+  if(nw.length<4){err.textContent='New password must be at least 4 characters.';return;}
+  if(nw!==conf){err.textContent='New passwords do not match.';return;}
+  if(!fbAuth||!fbAuth.currentUser){err.textContent='Your account hasn\'t been upgraded to the new login system yet — log out and back in with your current password first, then try again.';return;}
+  try{
+    const emailCred=firebase.auth.EmailAuthProvider.credential(fbAuth.currentUser.email,cur);
+    await fbAuth.currentUser.reauthenticateWithCredential(emailCred);
+    await fbAuth.currentUser.updatePassword(nw);
+    toggleChangePasswordPanel();
+    setStatus('Password updated.');
+  }catch(e){
+    err.textContent=(e.code==='auth/wrong-password')?'Current password is incorrect.':'Could not update password: '+e.message;
+  }
 }
 
 /* Decide which screen to show: setup, login, member portal, or full app */
@@ -2390,8 +2531,16 @@ async function addUser(){
   if(users.find(u=>u.username.toLowerCase()===username.toLowerCase())){alert('That username already exists.');return;}
   if(!password||password.length<4){alert('Password must be at least 4 characters.');return;}
   if(role==='Member'&&!linkedMemberName){alert('Select which member this login represents.');return;}
-  const hash=await hashPassword(password);
-  users.push({id:Date.now(),username,passwordHash:hash,role,linkedMemberName,active:true,createdAt:new Date().toISOString()});
+  let uid;
+  try{
+    uid=await createFirebaseAuthAccountFor(username,password);
+  }catch(e){
+    alert((e.code==='auth/operation-not-allowed')
+      ?'Email/Password sign-in isn\'t enabled on this fund\'s Firebase project yet — enable it in the Firebase console under Authentication → Sign-in method.'
+      :'Could not create the login account: '+e.message);
+    return;
+  }
+  users.push({id:Date.now(),username,firebaseUid:uid,passwordHash:null,role,linkedMemberName,active:true,createdAt:new Date().toISOString()});
   saveUsers();
   clearUserForm();
   renderUsersTable();
@@ -2401,7 +2550,9 @@ function editUser(id){
   const u=users.find(x=>x.id===id);if(!u)return;
   document.getElementById('user-username').value=u.username;
   document.getElementById('user-password').value='';
-  document.getElementById('user-password-hint').textContent='(leave blank to keep current password)';
+  document.getElementById('user-password-hint').textContent=u.firebaseUid
+    ?'(leave blank — this user has their own login and resets it themselves via "Change password")'
+    :'(leave blank to keep current password)';
   document.getElementById('user-role').value=u.role;
   onUserRoleChange();
   if(u.role==='Member')document.getElementById('user-linked-member').value=u.linkedMemberName||'';
@@ -2428,6 +2579,10 @@ async function saveUserEdit(){
   users[idx].role=role;
   users[idx].linkedMemberName=linkedMemberName;
   if(password){
+    if(users[idx].firebaseUid){
+      alert('Resetting another user\'s password isn\'t supported yet — changing someone else\'s password needs a server-side step that hasn\'t been built (planned as a later security upgrade). Ask '+users[idx].username+' to log in and use "Change password" themselves.');
+      return;
+    }
     if(password.length<4){alert('Password must be at least 4 characters.');return;}
     users[idx].passwordHash=await hashPassword(password);
   }
@@ -2465,16 +2620,20 @@ function renderUsersTable(){
   if(!users.length){wrap.innerHTML='<div class="empty">No users yet.</div>';return;}
   let h='<div style="overflow-x:auto"><table><thead><tr>'
     +'<th>Username</th><th style="width:90px">Role</th><th>Linked member</th>'
-    +'<th style="width:80px">Status</th><th style="width:100px">Created</th><th style="width:170px"></th>'
+    +'<th style="width:80px">Status</th><th style="width:110px">Login</th><th style="width:100px">Created</th><th style="width:170px"></th>'
     +'</tr></thead><tbody>';
   users.forEach(u=>{
     const isActive=u.active!==false;
     const isSelf=currentUser&&u.id===currentUser.id;
+    const loginBadge=u.firebaseUid
+      ?'<span class="tag tag-green" style="font-size:10px" title="Real Firebase Auth account">Upgraded</span>'
+      :'<span class="tag tag-amber" style="font-size:10px" title="Still on the old local password — upgrades automatically the next time this person logs in">Legacy</span>';
     h+=`<tr>
       <td><strong>${u.username}</strong>${isSelf?' <span style="font-size:10px;color:#888780">(you)</span>':''}</td>
       <td><span class="tag ${ROLE_COLORS[u.role]||'tag-amber'}">${u.role}</span></td>
       <td style="font-size:12px">${u.linkedMemberName||'—'}</td>
       <td>${isActive?'<span style="color:#3b6d11;font-size:12px">&#9679; Active</span>':'<span style="color:#a32d2d;font-size:12px">&#9679; Inactive</span>'}</td>
+      <td>${loginBadge}</td>
       <td style="font-size:11px;color:#888780">${u.createdAt?u.createdAt.split('T')[0]:'—'}</td>
       <td>
         </div>
