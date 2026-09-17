@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Like Minds Reimagined — v3.29.0</title>
+<title>Like Minds Reimagined — v3.30.0</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
@@ -184,13 +184,13 @@ tr:last-child td{border-bottom:none}
     <div id="setup-error" style="color:#a32d2d;font-size:12px;margin-bottom:10px"></div>
     <button class="btn-primary" style="width:100%;padding:10px" onclick="createFirstAdmin()">Create Admin account &amp; continue</button>
     <div style="text-align:center;margin-top:16px">
-      <a href="#" onclick="toggleConnectExistingFund(event)" style="font-size:12px;color:#378add;text-decoration:none">Already have a fund on another device? Connect with your sync code</a>
+      <a href="#" onclick="toggleConnectExistingFund(event)" style="font-size:12px;color:#378add;text-decoration:none">Already have a fund on another device? Connect with your Fund ID</a>
     </div>
     <div id="setup-connect-existing" style="display:none;margin-top:14px;border-top:0.5px solid #d3d1c7;padding-top:14px">
-      <label>Sync code</label>
-      <input id="setup-sync-code" type="password" placeholder="Enter your fund's sync code" onkeydown="if(event.key==='Enter')connectToExistingFund()"/>
+      <label>Fund ID</label>
+      <input id="setup-sync-code" type="text" placeholder="Ask your fund administrator for your Fund ID" onkeydown="if(event.key==='Enter')connectToExistingFund()"/>
       <div id="setup-sync-error" style="font-size:12px;margin:8px 0"></div>
-      <button style="width:100%;padding:9px" onclick="connectToExistingFund()">Connect &amp; pull fund data</button>
+      <button style="width:100%;padding:9px" onclick="connectToExistingFund()">Save &amp; continue to login</button>
     </div>
   </div>
 </div>
@@ -651,25 +651,23 @@ tr:last-child td{border-bottom:none}
     </div>
 
     <div class="card">
-      <div class="card-title">Cloud Sync</div>
+      <div class="card-title">Fund Sync</div>
       <div style="font-size:13px;color:#5f5e5a;line-height:1.6;margin-bottom:14px">
-        Set a sync code below, then enter the <strong>same code</strong> on every device this fund is managed from.
-        All fund data <strong>and user accounts (including passwords)</strong> are shared across every device using
-        that code — treat it like a master password for the fund. Once set, changes save to the cloud automatically
-        while you're online; if you go offline, changes are held locally and sync automatically once you reconnect.
-        A brand-new device can also connect to an existing fund from the login screen, before creating any local
-        account — see "Already have a fund on another device?" there.
+        Your Fund ID connects this device to your fund's cloud data. It is <strong>not a secret</strong> — access is
+        controlled by your Firebase login and your fund membership (set by an Admin in Users &amp; Access), not by
+        this ID. Once connected, changes save to the cloud automatically while you're online; if you go offline,
+        changes are held locally and sync automatically once you reconnect.
       </div>
       <div class="row">
         <div class="f2">
-          <label>Sync code</label>
-          <input id="lmr-sync-code-input" type="password" placeholder="Choose a private phrase for this fund"/>
+          <label>Fund ID</label>
+          <input id="lmr-sync-code-input" type="text" placeholder="Paste a Fund ID to connect this device"/>
         </div>
         <div style="flex:0;display:flex;gap:6px;align-items:flex-end">
-          <button class="btn-primary" onclick="setSyncCode()">Set / Change code</button>
-          <button onclick="toggleSyncCodeVisibility()" id="lmr-sync-code-toggle-btn">&#128065; Show</button>
+          <button class="btn-primary" onclick="connectFundId()">Connect</button>
         </div>
       </div>
+      <div id="lmr-fund-id-display" style="margin-top:8px;font-size:11px;color:#888780;font-family:monospace"></div>
       <div id="lmr-sync-status" style="margin-top:8px"></div>
       <div id="lmr-last-sync-display" style="margin-top:4px;font-size:11px;color:#888780;font-weight:600"></div>
     </div>
@@ -680,25 +678,9 @@ tr:last-child td{border-bottom:none}
         <button class="btn-primary" onclick="syncNow()">&#8635; Sync now</button>
         <button onclick="pushToCloud()">&#8593; Push local &rarr; cloud (overwrite cloud)</button>
         <button onclick="pullFromCloud()">&#8595; Pull cloud &rarr; local (overwrite local)</button>
-        <button class="btn-danger" onclick="disconnectSync()">&#128268; Disconnect this device</button>
+        <button class="btn-danger" onclick="disconnectFund()">&#128268; Disconnect this device</button>
       </div>
       <div class="hint" style="margin-top:8px">Sync now pushes if this device has unsynced local edits, otherwise pulls the latest cloud copy. Push/Pull force a direction — use them if something looks out of sync. A pull also refreshes user accounts and roles from the cloud, and will log you out if your account was changed or removed elsewhere.</div>
-    </div>
-
-    <div class="card" id="lmr-fund-migration-card" style="display:none">
-      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:6px">
-        <div class="card-title" style="margin-bottom:0">Fund structure migration <span style="font-weight:400;text-transform:none;letter-spacing:0;font-size:11px;color:#888780">— security plan, step 2</span></div>
-        <span id="lmr-fund-migration-badge"></span>
-      </div>
-      <div style="font-size:12px;color:#5f5e5a;line-height:1.6;margin-bottom:12px">
-        Copies this fund's data and member list into a new, fund-scoped location (<code>funds/{fundId}</code>) that
-        future steps of the security plan will build proper access rules around. This is <strong>additive only</strong> —
-        it runs alongside the existing Cloud Sync above, doesn't change how you log in or sync today, and can be re-run
-        any time to refresh the copy (e.g. after adding new users). The sync code above is still what makes this fund
-        discoverable, since <code>fundId</code> itself isn't a secret and carries no access control yet.
-      </div>
-      <button class="btn-primary" id="lmr-fund-migrate-btn" onclick="migrateToFundStructure()">&#8599; Migrate to new fund structure</button>
-      <div id="lmr-fund-migration-status" style="margin-top:8px"></div>
     </div>
   </div>
 
@@ -1753,12 +1735,12 @@ let allocationHistory=[]; // [{id, date, action:'set'|'updated'|'removed', asset
 
 /* ══════════════════════════════════════════
    CLOUD SYNC (Firebase Firestore)
-   One Firestore doc per sync-code hash, holding every fund-data field AND
-   `users`/`customRoles` — unlike the personal tracker this is modeled on,
-   LMR deliberately syncs login accounts too (per fund decision), so any
-   device holding the sync code can log in as any user of the fund. This
-   also means the code itself is now equivalent to a master password —
-   see the confirmation prompts in setSyncCode()/connectToExistingFund().
+   As of the v3.30.0 cutover, funds/{fundId} is the one Firestore doc holding
+   every fund-data field, with `funds/{fundId}/members/{uid}` alongside it for
+   login-account profiles. Access is governed entirely by Firestore Security
+   Rules checking the caller's real Firebase Auth uid against that members
+   subcollection — fundId itself is a plain, non-secret lookup key, not a
+   password; see connectFundId()/connectToExistingFund().
    `appBooted` tracks whether bootApp() has already rendered the shell, so
    pullFromCloud() knows whether to just write localStorage (pre-boot) or
    also refresh in-memory state + the visible UI (mid-session pull).
@@ -1771,12 +1753,13 @@ const LMR_FIREBASE_CONFIG={
   messagingSenderId:"911074593922",
   appId:"1:911074593922:web:03e8f1a631d294f102789b"
 };
-let fbAuth=null, fbDb=null, syncCode='', syncDocId=null, syncDebounceTimer=null, suppressAutoPush=false, appBooted=false;
-// v3.28.0 — Security plan Step 2: fundId identifies the fund's data under the new
-// funds/{fundId} tree (see FUND STRUCTURE MIGRATION module below). Unlike syncDocId
-// (a hash of the secret sync code), fundId is not itself a secret — it's just a lookup
-// key. It has no access-control meaning yet (Firestore Security Rules are Step 3), so
-// today it's discovered via the sync code exactly like syncDocId is.
+let fbAuth=null, fbDb=null, syncDebounceTimer=null, suppressAutoPush=false, appBooted=false;
+// v3.30.0 — Security plan Step 3 cutover: funds/{fundId} is now the ONLY cloud path
+// the app reads/writes. lmrSync/{hash} is left in place, untouched, but unused —
+// nothing in the app talks to it anymore. fundId is not a secret; it's a plain
+// lookup key. Real access control lives entirely in Firestore Security Rules,
+// which check the caller's real Firebase Auth uid against
+// funds/{fundId}/members/{uid} — not whether they know this string.
 let fundId=null;
 try{
   firebase.initializeApp(LMR_FIREBASE_CONFIG);
@@ -1785,20 +1768,27 @@ try{
   fbDb.enablePersistence().catch(()=>{}); // non-fatal if multiple tabs open
 }catch(e){ console.warn('Firebase init failed:', e.message); }
 
-async function hashSyncCode(str){
-  const buf=await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
-  return [...new Uint8Array(buf)].map(b=>b.toString(16).padStart(2,'0')).join('');
+// Resolves once Firebase Auth's restored session (if any) is known. Used instead of
+// signInAnonymously(): under the funds/{fundId} rules an anonymous uid can never
+// match a members/{uid} doc, so manufacturing a fake anonymous session would just
+// produce confusing permission-denied failures. We wait for the real per-user
+// session (which Firebase persists across reloads on its own) instead.
+let authReadyPromise=null;
+function waitForAuthReady(){
+  if(!fbAuth) return Promise.resolve(null);
+  if(!authReadyPromise){
+    authReadyPromise=new Promise(resolve=>{
+      const unsub=fbAuth.onAuthStateChanged(user=>{ unsub(); resolve(user); });
+    });
+  }
+  return authReadyPromise;
 }
 async function ensureSignedIn(){
   if(!fbAuth) throw new Error('Firebase not initialized');
-  // Firestore access (fund-data sync) still rides on anonymous auth — this is
-  // unrelated to a person's *app login*, which as of v3.27.0 uses a real,
-  // per-user Firebase Auth account (see AUTHENTICATION section below). Both
-  // can be signed in at once; anonymous auth here just satisfies Firestore's
-  // "must be authenticated" rule for devices that haven't logged a person in
-  // yet (e.g. mid-boot, before the login screen resolves).
-  if(!fbAuth.currentUser) await fbAuth.signInAnonymously();
-  return fbAuth.currentUser;
+  if(fbAuth.currentUser) return fbAuth.currentUser;
+  const user=await waitForAuthReady();
+  if(!user) throw new Error('Not signed in');
+  return user;
 }
 
 /* v3.27.0 — SECURITY: login credentials no longer live in this document at all.
@@ -1806,11 +1796,10 @@ async function ensureSignedIn(){
    which the client SDK never lets us read back out. What used to be the
    `users` array (including SHA-256 password hashes) is now just *profile*
    data — username/email, role, linkedMemberName, active — synced to its own
-   Firestore subcollection (lmrSync/{syncDocId}/profiles/{uid}) instead of
-   embedded in the main fund-data document. Fund financials and identity/role
-   data are now two separate reads/writes, even though both still live under
-   the same sync-code-keyed document tree (full per-collection security rules
-   are a later step — see security_improvement.md). customRoles (just
+   Firestore subcollection (funds/{fundId}/members/{uid}, as of the v3.30.0
+   cutover) instead of embedded in the main fund-data document. Fund financials
+   and identity/role data are two separate reads/writes, each governed by its
+   own Firestore Security Rule — see security_improvement.md. customRoles (just
    permission definitions, not credentials) still ride along in the main doc. */
 function gatherSyncPayload(){
   loadUsers();
@@ -1854,12 +1843,8 @@ function writeCloudDataToLocalStorage(d){
 /* ══════════════════════════════════════════
    USER PROFILE SYNC (separate from fund data)
    Profiles hold role/display info only — never credentials. Stored under
-   lmrSync/{syncDocId}/profiles/{uid}, one doc per Firebase Auth user.
+   funds/{fundId}/members/{uid}, one doc per Firebase Auth user.
 ══════════════════════════════════════════ */
-function profilesCollection(){
-  if(!fbDb||!syncDocId) return null;
-  return fbDb.collection('lmrSync').doc(syncDocId).collection('profiles');
-}
 function profileToCloudDoc(p){
   // Explicit allow-list — guarantees nothing credential-shaped ever reaches Firestore,
   // even if a legacy in-memory object still happens to carry a passwordHash field.
@@ -1868,38 +1853,37 @@ function profileToCloudDoc(p){
     createdAt:p.createdAt||new Date().toISOString()};
 }
 async function pushUserProfile(profile){
-  const col=profilesCollection();
-  if(!col) return; // no sync code set yet — profile stays local-only until one is
+  const col=fundMembersCollection();
+  if(!col) return; // no fund connected yet — profile stays local-only until one is
   try{ await ensureSignedIn(); await col.doc(profile.uid).set(profileToCloudDoc(profile)); }
   catch(e){ console.warn('Profile push failed:',e.message); }
-  if(fundId) await mirrorProfileToNewStructure(profile); // parallel copy — see FUND STRUCTURE MIGRATION module
 }
 async function deleteUserProfileCloud(uid){
-  const col=profilesCollection();
+  const col=fundMembersCollection();
   if(!col) return;
   try{ await ensureSignedIn(); await col.doc(uid).delete(); }
   catch(e){ console.warn('Profile delete failed:',e.message); }
 }
 async function fetchCloudProfile(uid){
-  const col=profilesCollection();
+  const col=fundMembersCollection();
   if(!col) return null;
   try{ await ensureSignedIn(); const snap=await col.doc(uid).get(); return snap.exists?snap.data():null; }
   catch(e){ console.warn('Profile fetch failed:',e.message); return null; }
 }
-/* Pushes every locally-known profile up to the cloud subcollection — used once when a
-   sync code is first set, so existing local accounts become available on other devices. */
+/* Pushes every locally-known profile up to funds/{fundId}/members — used when a fund
+   is first created, and after any local profile change (see saveUsers() call sites). */
 async function pushAllUserProfiles(){
-  const col=profilesCollection();
+  const col=fundMembersCollection();
   if(!col) return;
   loadUsers();
   const migrated=users.filter(u=>u.uid); // legacy (unmigrated) hash-based entries can't be pushed — no uid yet
   for(const p of migrated){ await pushUserProfile(p); }
 }
-/* Pulls every profile doc from the cloud subcollection and merges it into local `users`
+/* Pulls every member doc from funds/{fundId}/members and merges it into local `users`
    (cloud copy wins per-uid, since Admin actions in Settings are the source of truth for
    role/active changes). Local-only legacy (unmigrated) entries are left alone. */
 async function pullAllUserProfiles(){
-  const col=profilesCollection();
+  const col=fundMembersCollection();
   if(!col) return;
   try{
     await ensureSignedIn();
@@ -1913,17 +1897,11 @@ async function pullAllUserProfiles(){
 }
 
 /* ══════════════════════════════════════════
-   FUND STRUCTURE MIGRATION (security_improvement.md Step 2)
-   Reshapes the fund's cloud data from the single sync-code-keyed document
-   (lmrSync/{hash}, with profiles/{uid} beneath it) into a fund-scoped tree:
-     funds/{fundId}                — fund financial data (same shape as gatherSyncPayload())
-     funds/{fundId}/members/{uid}  — membership/profile docs (same shape as profileToCloudDoc())
-   fundId is a plain lookup key, NOT a secret — access control for this new tree is
-   Step 3 (Firestore Security Rules), not yet written. Until then this module only
-   ever ADDS a parallel copy alongside the existing lmrSync data; it never replaces
-   or removes anything, and the app's actual login/read/write behavior is unchanged.
-   The sync code remains the only way a device discovers fundId (Step 6 of the plan:
-   keep sync-code sync working for existing installs while the new model is opt-in).
+   FUND-SCOPED CLOUD STRUCTURE (security_improvement.md Steps 2–3)
+   funds/{fundId} is the sole cloud path as of v3.30.0. fundId is a plain lookup key
+   (not a secret), cached locally as lmr_fund_id; real access control lives entirely
+   in Firestore Security Rules, keyed off the caller's Firebase Auth uid against
+   funds/{fundId}/members/{uid}. lmrSync/{hash} is left in place but unused.
 ══════════════════════════════════════════ */
 function fundDataDoc(){
   if(!fbDb||!fundId) return null;
@@ -1933,99 +1911,20 @@ function fundMembersCollection(){
   if(!fbDb||!fundId) return null;
   return fbDb.collection('funds').doc(fundId).collection('members');
 }
-/* Best-effort mirror of the fund-data payload to funds/{fundId} — failures here are
-   logged but never surface to the person or block the primary lmrSync write, since
-   this parallel copy isn't relied on by anything yet. */
-async function mirrorFundDataToNewStructure(payload){
-  const doc=fundDataDoc();
-  if(!doc) return;
-  try{ await doc.set(payload,{merge:true}); }
-  catch(e){ console.warn('Fund-structure mirror (data) failed:',e.message); }
-}
-/* Best-effort mirror of one profile to funds/{fundId}/members/{uid}. */
-async function mirrorProfileToNewStructure(profile){
-  const col=fundMembersCollection();
-  if(!col) return;
-  try{ await col.doc(profile.uid).set(profileToCloudDoc(profile),{merge:true}); }
-  catch(e){ console.warn('Fund-structure mirror (member) failed:',e.message); }
-}
-/* If the lmrSync doc already records a fundId (because some other device already ran
-   the migration below) but this device hasn't learned it yet, adopt it locally so this
-   device also starts mirroring writes to the same funds/{fundId} tree. Never overwrites
-   a fundId this device already has. */
-function adoptFundIdFromCloud(d){
-  if(fundId) return;
-  if(d&&d.fundId){
-    fundId=d.fundId;
-    localStorage.setItem('lmr_fund_id',fundId);
-  }
-}
-function renderFundMigrationStatus(msg,isError){
-  const el=document.getElementById('lmr-fund-migration-status');
+function renderFundIdDisplay(){
+  const el=document.getElementById('lmr-fund-id-display');
   if(!el) return;
-  if(!msg){ el.innerHTML=''; return; }
-  el.innerHTML=`<span style="font-size:12px;color:${isError?'#a32d2d':'#3b6d11'}">${msg}</span>`;
-}
-function renderFundMigrationPanel(){
-  const badge=document.getElementById('lmr-fund-migration-badge');
-  const btn=document.getElementById('lmr-fund-migrate-btn');
-  if(!badge||!btn) return;
-  if(fundId){
-    badge.innerHTML=`<span class="tag tag-green" style="font-size:10px">&#10003; Migrated</span> <span style="font-size:11px;color:#888780;font-family:monospace">${fundId}</span>`;
-    btn.textContent='&#8635; Re-sync fund structure';
-  } else {
-    badge.innerHTML=`<span class="tag tag-amber" style="font-size:10px">Not migrated</span>`;
-    btn.textContent='&#8599; Migrate to new fund structure';
-  }
-  btn.disabled=!syncDocId;
-}
-/* One-time (idempotent — safe to click again, e.g. to re-sync after adding users)
-   Admin action that creates the funds/{fundId} tree from this fund's current cloud
-   data and every currently-known user profile, and records fundId back onto the
-   lmrSync doc so any other device on the same sync code discovers it automatically
-   on its next pull (see adoptFundIdFromCloud above). Requires a sync code to already
-   be set, since fundId is only ever learned via the existing sync-code channel. */
-async function migrateToFundStructure(){
-  if(!syncDocId){ renderFundMigrationStatus('Set a Cloud Sync code above first — fund structure migration piggybacks on it.', true); return; }
-  if(!navigator.onLine){ renderFundMigrationStatus('You appear to be offline.', true); return; }
-  if(fundId && !confirm('This fund was already migrated to fundId '+fundId+'. Re-run to refresh the new structure with the latest data and members?')) return;
-  renderFundMigrationStatus('Migrating…');
-  try{
-    await ensureSignedIn();
-    if(!fundId){
-      fundId='fund_'+Date.now().toString(36)+Math.random().toString(36).slice(2,8);
-    }
-    const payload=gatherSyncPayload();
-    // founderUid is written once here (never overwritten by later merge:true syncs, since
-    // mirrorFundDataToNewStructure's plain-payload calls from pushToCloud() don't include it)
-    // and lets Firestore Security Rules allow this fund's very first member doc to be
-    // self-created before any members/{uid} docs exist — see funds/{fundId} rules, Step 3
-    // of security_improvement.md.
-    await mirrorFundDataToNewStructure({...payload,founderUid:currentUser.uid});
-    loadUsers();
-    const migratedProfiles=users.filter(u=>u.uid);
-    for(const p of migratedProfiles){ await mirrorProfileToNewStructure(p); }
-    // Record fundId on the sync doc so every device sharing this sync code learns it too.
-    await fbDb.collection('lmrSync').doc(syncDocId).set({fundId},{merge:true});
-    localStorage.setItem('lmr_fund_id',fundId);
-    renderFundMigrationPanel();
-    renderFundMigrationStatus('&#10003; Migrated — '+migratedProfiles.length+' member profile'+(migratedProfiles.length!==1?'s':'')+' copied to the new structure — '+new Date().toLocaleTimeString());
-  }catch(e){
-    renderFundMigrationStatus('&#10007; Migration failed — '+e.message, true);
-    console.warn('Fund structure migration failed:',e.message);
-  }
+  el.textContent=fundId?('Fund ID: '+fundId):'Not connected to a fund yet.';
 }
 
 async function pushToCloud(){
-  if(!syncDocId){ renderSyncStatus('Set a sync code first.', true); return; }
+  if(!fundId){ renderSyncStatus('No fund connected yet — see Fund ID below.', true); return; }
   try{
     await ensureSignedIn();
     const payload=gatherSyncPayload();
-    await fbDb.collection('lmrSync').doc(syncDocId).set(payload);
+    await fundDataDoc().set(payload,{merge:true}); // merge: never clobbers founderUid
     await pushAllUserProfiles();
-    if(fundId) await mirrorFundDataToNewStructure(payload); // parallel copy — see FUND STRUCTURE MIGRATION module
     localStorage.setItem('lmr_local_version', String(payload.updatedAt));
-    localStorage.setItem('lmr_sync_initialized','true');
     localStorage.removeItem('lmr_pending_sync');
     renderSyncStatus('&#10003; Synced to cloud — '+new Date().toLocaleTimeString());
     recordSyncTime();
@@ -2037,22 +1936,19 @@ async function pushToCloud(){
 }
 
 async function pullFromCloud(){
-  if(!syncDocId){ renderSyncStatus('Set a sync code first.', true); return; }
+  if(!fundId){ renderSyncStatus('No fund connected yet — see Fund ID below.', true); return; }
   try{
     await ensureSignedIn();
-    const docSnap=await fbDb.collection('lmrSync').doc(syncDocId).get();
+    const docSnap=await fundDataDoc().get();
     if(!docSnap.exists){
-      renderSyncStatus("No cloud data yet for this code — uploading this device's data to start.");
+      renderSyncStatus("No cloud data yet for this fund — uploading this device's data to start.");
       await pushToCloud();
       return;
     }
     const d=docSnap.data();
     writeCloudDataToLocalStorage(d);
     await pullAllUserProfiles();
-    adoptFundIdFromCloud(d);
-    renderFundMigrationPanel();
     localStorage.setItem('lmr_local_version', String(d.updatedAt||Date.now()));
-    localStorage.setItem('lmr_sync_initialized','true');
     if(appBooted){
       suppressAutoPush=true;
       loadUsers();
@@ -2086,7 +1982,7 @@ async function pullFromCloud(){
 }
 
 async function syncNow(){
-  if(!syncDocId){ renderSyncStatus('Set a sync code first.', true); return; }
+  if(!fundId){ renderSyncStatus('No fund connected yet — see Fund ID below.', true); return; }
   try{
     await ensureSignedIn();
     if(localStorage.getItem('lmr_pending_sync')==='true'){ await pushToCloud(); return; }
@@ -2099,7 +1995,7 @@ async function syncNow(){
    against pushing while offline (queues a pending flag instead, flushed by
    the 'online' listener below). */
 function scheduleAutoPush(){
-  if(!syncDocId||suppressAutoPush) return;
+  if(!fundId||suppressAutoPush) return;
   clearTimeout(syncDebounceTimer);
   if(!navigator.onLine){
     localStorage.setItem('lmr_pending_sync','true');
@@ -2109,10 +2005,10 @@ function scheduleAutoPush(){
   syncDebounceTimer=setTimeout(()=>{ pushToCloud(); }, 600);
 }
 window.addEventListener('online', ()=>{
-  if(syncDocId && localStorage.getItem('lmr_pending_sync')==='true') pushToCloud();
+  if(fundId && localStorage.getItem('lmr_pending_sync')==='true') pushToCloud();
 });
 window.addEventListener('offline', ()=>{
-  if(syncDocId) renderSyncStatus('Offline — saved locally, will sync to the cloud automatically once back online.');
+  if(fundId) renderSyncStatus('Offline — saved locally, will sync to the cloud automatically once back online.');
 });
 
 function recordSyncTime(){
@@ -2122,7 +2018,7 @@ function recordSyncTime(){
 function renderLastSyncDisplay(){
   const el=document.getElementById('lmr-last-sync-display');
   if(!el) return;
-  if(!syncCode){ el.textContent=''; return; }
+  if(!fundId){ el.textContent=''; return; }
   const ts=localStorage.getItem('lmr_last_synced');
   el.textContent = ts ? '&#128337; Last synced: '+new Date(parseInt(ts)).toLocaleString() : '&#128337; Not synced yet on this device.';
 }
@@ -2134,26 +2030,15 @@ function renderSyncStatus(msg,isError){
 }
 function renderSyncPanel(){
   renderLastSyncDisplay();
+  renderFundIdDisplay();
   const card=document.getElementById('lmr-sync-actions-card');
-  const migCard=document.getElementById('lmr-fund-migration-card');
-  if(migCard) migCard.style.display=syncCode?'block':'none';
-  renderFundMigrationPanel();
   if(!card) return;
-  if(syncCode){
+  if(fundId){
     card.style.display='block';
-    const input=document.getElementById('lmr-sync-code-input');
-    if(input && !input.value) input.value=syncCode;
     renderSyncStatus('Connected — changes sync to the cloud automatically while online.');
   } else {
     card.style.display='none';
   }
-}
-function toggleSyncCodeVisibility(){
-  const input=document.getElementById('lmr-sync-code-input');
-  const btn=document.getElementById('lmr-sync-code-toggle-btn');
-  if(!input) return;
-  if(input.type==='password'){ input.type='text'; if(btn) btn.textContent='&#128584; Hide'; }
-  else { input.type='password'; if(btn) btn.textContent='&#128065; Show'; }
 }
 
 /* Setting/changing the sync code from within Settings (post-login). Because
@@ -2161,35 +2046,33 @@ function toggleSyncCodeVisibility(){
    that already has cloud data will REPLACE this device's local users —
    explicitly confirmed here rather than silently overwritten, since that's
    a materially bigger risk than overwriting fund figures alone. */
-async function setSyncCode(){
+async function connectFundId(){
   const val=document.getElementById('lmr-sync-code-input').value.trim();
-  if(!val){alert('Enter a sync code.');return;}
-  if(val.length<8 && !confirm('Short codes are easier for others to guess. Anyone with this code can read AND change your fund data and user accounts. Use it anyway?')) return;
-  if(!navigator.onLine){alert('You appear to be offline. Connect to the internet to set up cloud sync.');return;}
-  const prevCode=localStorage.getItem('lmr_sync_code')||'';
+  if(!val){alert('Enter a Fund ID.');return;}
+  if(!navigator.onLine){alert('You appear to be offline. Connect to the internet to connect to a fund.');return;}
+  if(!currentUser){alert('Log in first, then connect this device to your fund by its Fund ID.');return;}
+  const prevFundId=fundId;
+  fundId=val;
+  localStorage.setItem('lmr_fund_id', fundId);
+  renderSyncPanel();
+  renderSyncStatus('Connecting…');
   try{
-    const hash=await hashSyncCode(val);
     await ensureSignedIn();
-    const docSnap=await fbDb.collection('lmrSync').doc(hash).get();
-    if(docSnap.exists && val!==prevCode){
-      if(!confirm("A fund already exists in the cloud under this code.\n\nConnecting will REPLACE all data and user accounts on this device with the cloud copy — including logins. Make sure you know a valid username and password for that fund before continuing.\n\nContinue and pull the cloud copy?")) return;
-    }
-    localStorage.setItem('lmr_sync_code', val);
-    syncCode=val; syncDocId=hash;
-    if(val!==prevCode) localStorage.removeItem('lmr_sync_initialized');
-    renderSyncPanel();
-    renderSyncStatus('Connecting…');
-    if(docSnap.exists){ await pullFromCloud(); }
-    else { await pushToCloud(); }
+    const docSnap=await fundDataDoc().get();
+    if(!docSnap.exists){ throw new Error('No fund found with that ID.'); }
+    await pullFromCloud();
   }catch(e){
-    renderSyncStatus('&#10007; Connection failed — '+e.message, true);
+    // Roll back — don't leave the device pointed at a fund it can't reach.
+    fundId=prevFundId;
+    if(fundId) localStorage.setItem('lmr_fund_id', fundId); else localStorage.removeItem('lmr_fund_id');
+    renderSyncPanel();
+    renderSyncStatus('&#10007; Could not connect — '+e.message+'. Check the Fund ID, or ask your fund administrator to add you as a member first.', true);
   }
 }
-function disconnectSync(){
-  if(!confirm("Disconnect this device from cloud sync? Local data and user accounts stay as they are — this device just stops syncing until you enter the code again."))return;
-  localStorage.removeItem('lmr_sync_code');
-  localStorage.removeItem('lmr_sync_initialized');
-  syncCode=''; syncDocId=null;
+function disconnectFund(){
+  if(!confirm("Disconnect this device from its fund? Local data and user accounts stay as they are — this device just stops syncing until a Fund ID is entered again."))return;
+  localStorage.removeItem('lmr_fund_id');
+  fundId=null;
   const input=document.getElementById('lmr-sync-code-input'); if(input) input.value='';
   renderSyncPanel();
 }
@@ -2199,35 +2082,16 @@ function disconnectSync(){
    brand-new device pull an existing cloud fund — including its users — so
    the person logs in with their existing account instead of creating a
    duplicate local admin for what's really the same fund. */
-async function connectToExistingFund(){
-  const code=document.getElementById('setup-sync-code').value.trim();
+function connectToExistingFund(){
+  const id=document.getElementById('setup-sync-code').value.trim();
   const errEl=document.getElementById('setup-sync-error');
   errEl.style.color='#5f5e5a';
-  if(!code){errEl.textContent='Enter the sync code.';errEl.style.color='#a32d2d';return;}
-  if(!navigator.onLine){errEl.textContent='You appear to be offline — connect to the internet first.';errEl.style.color='#a32d2d';return;}
-  errEl.textContent='Connecting…';
-  try{
-    const hash=await hashSyncCode(code);
-    await ensureSignedIn();
-    const docSnap=await fbDb.collection('lmrSync').doc(hash).get();
-    if(!docSnap.exists){
-      errEl.textContent='No fund found for that code. Check the code, or create a new fund above instead.';
-      errEl.style.color='#a32d2d';
-      return;
-    }
-    writeCloudDataToLocalStorage(docSnap.data());
-    syncCode=code; syncDocId=hash;
-    await pullAllUserProfiles();
-    localStorage.setItem('lmr_sync_code',code);
-    localStorage.setItem('lmr_sync_initialized','true');
-    localStorage.setItem('lmr_last_synced', String(Date.now()));
-    errEl.style.color='#27500a';
-    errEl.textContent='Connected — loading your fund…';
-    setTimeout(()=>{ bootApp(); },500);
-  }catch(e){
-    errEl.style.color='#a32d2d';
-    errEl.textContent='Connection failed: '+e.message;
-  }
+  if(!id){errEl.textContent='Enter the Fund ID.';errEl.style.color='#a32d2d';return;}
+  fundId=id;
+  localStorage.setItem('lmr_fund_id',id);
+  errEl.style.color='#27500a';
+  errEl.textContent='Saved. Log in with the username/email and password your fund administrator gave you.';
+  setTimeout(()=>{ bootApp(); },600);
 }
 function toggleConnectExistingFund(e){
   if(e)e.preventDefault();
@@ -2489,6 +2353,16 @@ async function createFirstAdmin(){
     const profile={uid,username,email:email||null,authMode:mode,role:'Admin',linkedMemberName:null,active:true,createdAt:new Date().toISOString()};
     users.push(profile);
     saveUsers();
+    // Brand-new device with no fund yet — this Admin becomes the fund's founder.
+    // A device that already has a fundId (e.g. connected via "Already have a fund?")
+    // keeps using that one instead of creating a second fund.
+    if(!fundId){
+      fundId='fund_'+Date.now().toString(36)+Math.random().toString(36).slice(2,8);
+      localStorage.setItem('lmr_fund_id',fundId);
+      await ensureSignedIn();
+      await fundDataDoc().set({...gatherSyncPayload(),founderUid:uid},{merge:true});
+    }
+    await pushUserProfile(profile);
     currentUser={uid,username:profile.username,role:'Admin',linkedMemberName:null};
     sessionStorage.setItem('lmr_session',JSON.stringify(currentUser));
     bootApp();
@@ -2550,6 +2424,9 @@ async function attemptLogin(){
     }
     currentUser={uid:profile.uid,username:profile.username,role:profile.role,linkedMemberName:profile.linkedMemberName||null};
     sessionStorage.setItem('lmr_session',JSON.stringify(currentUser));
+    // A device that just connected via Fund ID has empty local fund data — pull the
+    // real thing now that we're authenticated as a legitimate member.
+    if(fundId && navigator.onLine){ try{ await pullFromCloud(); }catch(e){} }
     bootApp();
   }catch(e){
     errEl.style.color='#a32d2d';
@@ -2582,7 +2459,7 @@ function bootApp(){
     if(!u||u.active===false){currentUser=null;sessionStorage.removeItem('lmr_session');}
   }
 
-  if(!users.length){
+  if(!users.length && !fundId){
     document.getElementById('auth-setup').style.display='flex';
     return;
   }
@@ -9220,17 +9097,21 @@ const ACCOUNTING_TABS=new Set(['journal','ledger','trial-balance','statements','
 // are called explicitly here since bootApp() itself hasn't populated in-memory
 // state yet at this point — pushToCloud()/pullFromCloud() need fresh data to work with.
 setTimeout(()=>{
-  fundId=localStorage.getItem('lmr_fund_id')||null; // v3.28.0 — see FUND STRUCTURE MIGRATION module
-  const savedCode=localStorage.getItem('lmr_sync_code')||'';
-  if(!savedCode){ bootApp(); return; }
+  fundId=localStorage.getItem('lmr_fund_id')||null;
+  if(!fundId){ bootApp(); return; }
   load();
   loadUsers();
-  hashSyncCode(savedCode).then(hash=>{
-    syncCode=savedCode; syncDocId=hash;
-    if(!navigator.onLine){ bootApp(); return; }
-    const action = (localStorage.getItem('lmr_pending_sync')==='true') ? pushToCloud() : pullFromCloud();
-    action.then(()=>bootApp()).catch(()=>bootApp());
-  }).catch(()=>bootApp());
+  if(!navigator.onLine){ bootApp(); return; }
+  // One-time cutover: this device is authoritative (no other devices connected yet),
+  // so the FIRST v3.30.0 boot pushes local state to funds/{fundId} rather than
+  // risking a pull silently overwriting fresher local data with an older snapshot.
+  // Every boot after that behaves normally (push if there are unsynced local edits,
+  // otherwise pull the latest cloud copy).
+  const cutoverDone=localStorage.getItem('lmr_cutover_v330')==='true';
+  const action = (!cutoverDone || localStorage.getItem('lmr_pending_sync')==='true')
+    ? pushToCloud().then(()=>localStorage.setItem('lmr_cutover_v330','true'))
+    : pullFromCloud();
+  action.then(()=>bootApp()).catch(()=>bootApp());
 },0);
 </script>
 </body>
