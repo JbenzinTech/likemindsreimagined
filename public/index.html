@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Like Minds Reimagined — v3.30.0</title>
+<title>Like Minds Reimagined — v3.30.3</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
@@ -1051,6 +1051,13 @@ tr:last-child td{border-bottom:none}
         </select>
       </div>
       <div class="f1"><label>Asset type <span style="color:#888780;font-size:11px">(auto)</span></label><input id="sale-asset-type" type="text" readonly style="background:#f4f4f2;color:#0c447c;font-weight:600"/></div>
+      <div class="f1">
+        <label>Redemption type</label>
+        <select id="sale-redemption-type" onchange="previewSaleGL()">
+          <option value="partial">Partial redemption</option>
+          <option value="full">Full redemption</option>
+        </select>
+      </div>
     </div>
     <div class="row">
       <div class="f1">
@@ -1073,6 +1080,7 @@ tr:last-child td{border-bottom:none}
         <button id="sale-update-btn" class="btn-primary" onclick="saveSaleEdit()" style="display:none;background:#1d6f42;border-color:#1d6f42">&#10003; Update</button>
       </div>
     </div>
+    <div class="hint">Mark <strong>Full redemption</strong> when this sale exits the entire remaining position in this investment; use <strong>Partial redemption</strong> when some of the holding remains. This is a record-keeping tag only — it does not change how cost basis or gain/loss are calculated.</div>
     <div class="hint" id="sale-gl-preview"></div>
   </div>
   <div class="card">
@@ -8377,11 +8385,38 @@ function syncSaleAssetDropdown(){
     sel.appendChild(opt);
   });
 }
+// Remaining cost basis for an Asset ID as of a given date — average-cost method (the
+// historical standard approach for mutual fund holdings without lot-level unit tracking,
+// and consistent with how the Stocks module already computes average cost here). Total
+// purchased (including any stock transactions tagged to this Asset ID via
+// computeAssetIdStockCostBasis, same convention used in the Valuation breakdown and NAV
+// History detail) minus the costBasis already consumed by PRIOR sales of the same asset,
+// ordered chronologically (date, then id as tiebreaker for same-day sales). Each sale
+// permanently consumes whatever costBasis was recorded against it — auto-filled or manually
+// overridden — so a second (or third) partial redemption of the same holding sees only what
+// genuinely remains, instead of the full historical purchase total every time.
+// excludeSaleId lets an in-progress edit see the pool as it would be with that sale reversed
+// out, so editing doesn't double-subtract its own prior consumption.
+function computeRemainingCostBasis(assetId,asOfDate,excludeSaleId){
+  if(!assetId) return 0;
+  const totalPurchased=purchases.filter(p=>p.assetId===assetId&&p.date<=asOfDate).reduce((s,p)=>s+p.amount,0)
+    +computeAssetIdStockCostBasis(assetId,asOfDate);
+  const priorSales=sales.filter(s=>{
+    if(s.assetId!==assetId) return false;
+    if(excludeSaleId&&s.id===excludeSaleId) return false;
+    if(s.date<asOfDate) return true;
+    if(s.date===asOfDate) return excludeSaleId?s.id<excludeSaleId:true;
+    return false;
+  });
+  const soldCost=priorSales.reduce((s,x)=>s+(x.costBasis||0),0);
+  return Math.max(totalPurchased-soldCost,0);
+}
 function onSaleAssetChange(assetId){
   const item=portfolioItems.find(p=>p.assetId===assetId);
   document.getElementById('sale-asset-type').value=item?getAssetLabelFull(item.assetType):'';
   const saleDate=document.getElementById('sale-date').value||today;
-  const totalCost=purchases.filter(p=>p.assetId===assetId&&p.date<=saleDate).reduce((s,p)=>s+p.amount,0);
+  const editId=parseInt(document.getElementById('sale-edit-id').value)||null;
+  const totalCost=computeRemainingCostBasis(assetId,saleDate,editId);
   const costEl=document.getElementById('sale-cost');
   document.getElementById('sale-cost-raw').value=totalCost||'';
   costEl.value=totalCost?totalCost.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}):'—';
@@ -8401,6 +8436,7 @@ function clearSaleForm(){
   document.getElementById('sale-date').value=today;
   document.getElementById('sale-asset-id').value='';
   document.getElementById('sale-asset-type').value='';
+  if(document.getElementById('sale-redemption-type')) document.getElementById('sale-redemption-type').value='partial';
   const p=document.getElementById('sale-proceeds');p.value='';p.classList.remove('input-formatted');
   document.getElementById('sale-proceeds-raw').value='';
   document.getElementById('sale-cost').value='';
@@ -8423,6 +8459,7 @@ function addSale(){
   const proceeds=parseFloat(document.getElementById('sale-proceeds-raw').value)||0;
   const costBasis=parseFloat(document.getElementById('sale-cost-raw').value)||0;
   const note=document.getElementById('sale-note').value.trim();
+  const redemptionType=document.getElementById('sale-redemption-type')?.value||'partial';
   if(!date){alert('Select a date.');return;}
   if(!assetId){alert('Select an asset.');return;}
   if(!proceeds||proceeds<=0){alert('Enter valid sale proceeds.');return;}
@@ -8431,27 +8468,37 @@ function addSale(){
   const settleAccount=document.getElementById('sale-settle')?.value||'1000';
   const gl=proceeds-costBasis;
   const newId=Date.now();
-  sales.push({date,assetId,assetType,proceeds,costBasis,gl,note,settleAccount,id:newId});
+  sales.push({date,assetId,assetType,proceeds,costBasis,gl,note,redemptionType,settleAccount,id:newId});
   sales.sort((a,b)=>a.date.localeCompare(b.date));
   const saleLines=gl>=0
     ?[{account:settleAccount,debit:proceeds,credit:0},{account:'1100',debit:0,credit:costBasis},{account:'4200',debit:0,credit:gl}]
     :[{account:settleAccount,debit:proceeds,credit:0},{account:'4200',debit:-gl,credit:0},{account:'1100',debit:0,credit:costBasis}];
-  postJournal(date,'Sale — '+assetId,saleLines,'sale',newId);
+  postJournal(date,'Sale — '+assetId+(redemptionType==='full'?' (Full redemption)':' (Partial redemption)'),saleLines,'sale',newId);
   recomputeAllValuationJournals();
   clearSaleForm();save();renderSalesLedger();renderPnL();
 }
 function editSale(id){
   const s=sales.find(x=>x.id===id);if(!s)return;
+  // Set edit-id FIRST — computeRemainingCostBasis() (via onSaleAssetChange below) needs it to
+  // exclude this sale's own already-recorded costBasis from "prior sales consumed", otherwise
+  // editing a sale would treat it as still-unconsumed AND still-consumed at the same time.
+  document.getElementById('sale-edit-id').value=id;
   document.getElementById('sale-date').value=s.date;
   document.getElementById('sale-asset-id').value=s.assetId;
   onSaleAssetChange(s.assetId);
+  // Restore this sale's own recorded cost basis (which may have been manually adjusted) rather
+  // than leaving the freshly-recomputed pool total in the field — the recompute above only
+  // needs to kick in once the user actually changes the asset or the date while editing.
+  const costEl=document.getElementById('sale-cost');
+  document.getElementById('sale-cost-raw').value=s.costBasis||'';
+  costEl.value=s.costBasis?s.costBasis.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}):'—';
   const p=document.getElementById('sale-proceeds');
   document.getElementById('sale-proceeds-raw').value=s.proceeds;
   p.value=s.proceeds.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
   p.classList.add('input-formatted');
+  if(document.getElementById('sale-redemption-type')) document.getElementById('sale-redemption-type').value=s.redemptionType||'partial';
   document.getElementById('sale-note').value=s.note||'';
   if(document.getElementById('sale-settle')) document.getElementById('sale-settle').value=s.settleAccount||'1000';
-  document.getElementById('sale-edit-id').value=id;
   setSaleFormMode(true);previewSaleGL();
   document.getElementById('panel-port-sales').querySelector('.card').scrollIntoView({behavior:'smooth',block:'nearest'});
 }
@@ -8463,19 +8510,20 @@ function saveSaleEdit(){
   const proceeds=parseFloat(document.getElementById('sale-proceeds-raw').value)||0;
   const costBasis=parseFloat(document.getElementById('sale-cost-raw').value)||0;
   const note=document.getElementById('sale-note').value.trim();
+  const redemptionType=document.getElementById('sale-redemption-type')?.value||'partial';
   if(!date||!assetId||!proceeds){alert('Complete all required fields.');return;}
   const item=portfolioItems.find(p=>p.assetId===assetId);
   const assetType=item?item.assetType:'';
   const settleAccount=document.getElementById('sale-settle')?.value||'1000';
   const gl=proceeds-costBasis;
   const idx=sales.findIndex(x=>x.id===id);if(idx===-1)return;
-  sales[idx]={...sales[idx],date,assetId,assetType,proceeds,costBasis,gl,note,settleAccount};
+  sales[idx]={...sales[idx],date,assetId,assetType,proceeds,costBasis,gl,note,redemptionType,settleAccount};
   sales.sort((a,b)=>a.date.localeCompare(b.date));
   reverseJournalBySource('sale',id);
   const saleLines2=gl>=0
     ?[{account:settleAccount,debit:proceeds,credit:0},{account:'1100',debit:0,credit:costBasis},{account:'4200',debit:0,credit:gl}]
     :[{account:settleAccount,debit:proceeds,credit:0},{account:'4200',debit:-gl,credit:0},{account:'1100',debit:0,credit:costBasis}];
-  postJournal(date,'Sale — '+assetId,saleLines2,'sale',id);
+  postJournal(date,'Sale — '+assetId+(redemptionType==='full'?' (Full redemption)':' (Partial redemption)'),saleLines2,'sale',id);
   recomputeAllValuationJournals();
   clearSaleForm();setSaleFormMode(false);save();renderSalesLedger();renderPnL();
 }
@@ -8503,6 +8551,7 @@ function renderSalesLedger(){
       <td>${s.date}</td>
       <td style="font-size:11px;font-weight:600;color:#0c447c">${s.assetId}</td>
       <td><span class="tag tag-purple">${getAssetLabelFull(s.assetType)||'—'}</span></td>
+      <td><span class="tag ${s.redemptionType==='full'?'tag-red':'tag-amber'}">${s.redemptionType==='full'?'Full':'Partial'}</span></td>
       <td class="num">${fmt(s.costBasis)}</td>
       <td class="num" style="font-weight:500">${fmt(s.proceeds)}</td>
       <td class="num" style="font-weight:600;color:${glColor}">${s.gl>=0?'+':''}${fmt(s.gl)}</td>
@@ -8512,11 +8561,11 @@ function renderSalesLedger(){
   });
   const glColor=totGL>=0?'#3b6d11':'#a32d2d';
   wrap.innerHTML='<div style="overflow-x:auto"><table><thead><tr>'
-    +`<th style="width:90px;cursor:pointer;user-select:none" onclick="toggleSaleSort()" title="Click to sort">Date ${saleSortAsc?'&#9650;':'&#9660;'}</th><th style="width:130px">Asset ID</th><th style="width:100px">Type</th>`
+    +`<th style="width:90px;cursor:pointer;user-select:none" onclick="toggleSaleSort()" title="Click to sort">Date ${saleSortAsc?'&#9650;':'&#9660;'}</th><th style="width:130px">Asset ID</th><th style="width:100px">Type</th><th style="width:90px">Redemption</th>`
     +'<th class="num" style="width:120px">Cost basis</th><th class="num" style="width:120px">Proceeds</th>'
     +'<th class="num" style="width:110px">Gain / Loss</th><th>Note</th><th style="width:44px"></th>'
     +'</tr></thead><tbody>'+rows
-    +`<tr class="tfoot-row"><td colspan="3">Total</td><td class="num">${fmt(totCost)}</td><td class="num">${fmt(totProc)}</td><td class="num" style="color:${glColor}">${totGL>=0?'+':''}${fmt(totGL)}</td><td colspan="2"></td></tr>`
+    +`<tr class="tfoot-row"><td colspan="4">Total</td><td class="num">${fmt(totCost)}</td><td class="num">${fmt(totProc)}</td><td class="num" style="color:${glColor}">${totGL>=0?'+':''}${fmt(totGL)}</td><td colspan="2"></td></tr>`
     +'</tbody></table></div>';
 }
 

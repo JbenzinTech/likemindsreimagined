@@ -1,0 +1,148 @@
+rules_version = '2';
+
+// ═══════════════════════════════════════════════════════════════════════
+// LMR — Firestore Security Rules
+//
+// v3.30.0 cutover status: the app's live login/sync path now reads and
+// writes ONLY funds/{fundId} and funds/{fundId}/members/{uid}. The legacy
+// lmrSync/{hash} tree (and its profiles/{ts} and backups/{ts} subcollections)
+// is confirmed unused by the app as of this version — nothing in the client
+// reads from or writes to it anymore.
+//
+// This revision closes the deferred follow-up noted in security_improvement.md
+// and lmr_status_report.md v3.30.0: lmrSync is now a flat deny for every
+// client request. There is no narrow read allowance — inspecting or
+// migrating old lmrSync data (if ever needed) is a Firebase console or
+// Admin SDK job, both of which bypass these rules entirely, so the rules
+// themselves don't need to accommodate that case.
+//
+// The previous version of this file had a bug: it nested a second
+// `match /databases/{database}/documents { ... }` inside the outer one
+// already opened at the top of this file. That's not valid Firestore
+// Rules syntax — a `match` inside an already-open `match /databases/
+// {database}/documents` block must use a path relative to that point
+// (e.g. `match /lmrSync/{hash} { ... }`), not re-open the same absolute
+// path again. Whatever was actually live in the console for lmrSync
+// before this revision was therefore either a different, manually-pasted
+// rule, or the deploy of that block never actually took effect — worth
+// confirming in the console once this file is deployed.
+// ═══════════════════════════════════════════════════════════════════════
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Helpers ──────────────────────────────────────────────────────
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function memberDoc(fundId) {
+      return /databases/$(database)/documents/funds/$(fundId)/members/$(request.auth.uid);
+    }
+
+    function isFundMember(fundId) {
+      return isSignedIn() && exists(memberDoc(fundId));
+    }
+
+    function fundMemberData(fundId) {
+      return get(memberDoc(fundId)).data;
+    }
+
+    // "Active" mirrors the app's own active!==false convention (see
+    // toggleUserActive() / profileToCloudDoc() in the app).
+    function isActiveFundMember(fundId) {
+      return isFundMember(fundId) && fundMemberData(fundId).active != false;
+    }
+
+    function isFundAdmin(fundId) {
+      return isActiveFundMember(fundId) && fundMemberData(fundId).role == 'Admin';
+    }
+
+    // True only at the instant a fund is first created — before any member
+    // doc exists for it — and only for the uid that created it (founderUid,
+    // written once by createFirstAdmin() in the app). Lets that first
+    // Admin self-create their own member doc with no existing membership to
+    // check against.
+    function isFundFounder(fundId) {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/funds/$(fundId)) &&
+        get(/databases/$(database)/documents/funds/$(fundId)).data.founderUid == request.auth.uid;
+    }
+
+    // ── funds/{fundId} — fund financial data ────────────────────────
+    match /funds/{fundId} {
+      // Read: any active member of this specific fund. Not public, and not
+      // "any signed-in user" — must have a members/{uid} doc in THIS fund.
+      allow read: if isActiveFundMember(fundId);
+
+      // Create: the fund doc itself is harmless with no members attached
+      // (it grants no access to anything), so any signed-in user may create
+      // one — this only ever happens via createFirstAdmin(), which picks a
+      // fresh random fundId client-side. What matters is who can
+      // subsequently attach themselves as a member (see the members rules).
+      allow create: if isSignedIn();
+
+      // Update: any active member can write fund data today. This matches
+      // the app's current behavior (Admin and Manager roles can both push
+      // saves) but does NOT yet replicate the app's granular per-section
+      // permission grid (e.g. a role with Portfolio access but no
+      // Accounting access can still write here) — that finer split is a
+      // Cloud Functions job (security_improvement.md Step 4), not something
+      // Firestore rules alone can express well against this document shape.
+      allow update: if isActiveFundMember(fundId);
+
+      allow delete: if isFundAdmin(fundId);
+
+      // ── funds/{fundId}/members/{uid} — membership & role ──────────
+      match /members/{memberUid} {
+        // Read: any active member of the fund can see the full member
+        // list — needed for role management screens and member pickers.
+        allow read: if isActiveFundMember(fundId);
+
+        // Create: either
+        //   (a) an existing Admin adding/mirroring someone else's profile, or
+        //   (b) the fund's founder self-creating their own first member doc
+        //       (see isFundFounder).
+        // Plain self-service joins to an existing fund are rejected — only
+        // an Admin can add a new member.
+        allow create: if isFundAdmin(fundId) ||
+                         (request.auth.uid == memberUid && isFundFounder(fundId));
+
+        // Update: the member themselves may update their own doc EXCEPT
+        // their own role (no self-promotion) or their own active flag (no
+        // self-reactivation after an Admin deactivates them). An Admin may
+        // update anything, including another member's role/active status.
+        allow update: if isFundAdmin(fundId) ||
+                         (request.auth.uid == memberUid &&
+                          request.resource.data.role == resource.data.role &&
+                          request.resource.data.active == resource.data.active);
+
+        // Delete: Admin only.
+        allow delete: if isFundAdmin(fundId);
+      }
+    }
+
+    // ── lmrSync/{hash} — LOCKED DOWN, confirmed unused post-cutover ──
+    // Full deny for every client request, on the doc and every subcollection
+    // beneath it (profiles/{uid}, backups/{ts}). Nothing in the live app
+    // reads from or writes to this tree as of v3.30.0. If old data ever
+    // needs to be inspected or migrated, do it via the Firebase console or
+    // the Admin SDK — both bypass these rules and don't need an allowance
+    // carved out here.
+    match /lmrSync/{hash} {
+      allow read, write: if false;
+
+      match /{document=**} {
+        allow read, write: if false;
+      }
+    }
+
+    // ── Everything else — deny by default ───────────────────────────
+    // Firestore denies unmatched paths by default, but an explicit
+    // catch-all makes that intent visible rather than relying on the
+    // implicit behavior.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
