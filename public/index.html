@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Like Minds Reimagined — v3.30.3</title>
+<title>Like Minds Reimagined — v3.30.5</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
@@ -1069,9 +1069,13 @@ tr:last-child td{border-bottom:none}
         <input type="hidden" id="sale-proceeds-raw"/>
       </div>
       <div class="f1">
-        <label>Cost basis <span style="color:#888780;font-size:11px">(auto from purchases)</span></label>
-        <input id="sale-cost" type="text" readonly style="background:#f4f4f2;font-weight:500"/>
+        <label>Cost basis <span style="color:#888780;font-size:11px">(auto-filled, average-cost — editable if you need to adjust)</span></label>
+        <input id="sale-cost" type="text" placeholder="0.00"
+          oninput="stripNonNumeric(this)"
+          onblur="applyFormatting(this,'sale-cost-raw');validateSaleCostBasis();previewSaleGL()"
+          onfocus="stripFormatting(this,'sale-cost-raw')"/>
         <input type="hidden" id="sale-cost-raw"/>
+        <div id="sale-cost-warning" style="display:none;color:#a32d2d;font-size:11px;margin-top:4px;line-height:1.5"></div>
       </div>
       <div class="f1"><label>Note</label><input id="sale-note" type="text" placeholder="e.g. Full exit"/></div>
       <div class="f1"><label>Settlement account</label><select id="sale-settle"></select></div>
@@ -1718,6 +1722,15 @@ function toggleTrfSort(){ trfSortAsc=!trfSortAsc; renderTransferLedger(); }
 function toggleJrnSort(){ jrnSortAsc=!jrnSortAsc; renderJournal(); }
 function toggleCaSort(){ caSortAsc=!caSortAsc; renderCorpActionsLog(); }
 function dateSortCmp(a,b,asc){ return asc? a.date.localeCompare(b.date) : b.date.localeCompare(a.date); }
+/* Display-only sort toggles for NAV History, Members Register, and Users & Access — default
+   false = descending (newest first). For NAV History this affects ONLY the rendered row order;
+   period-change/since-launch figures are still computed from navValuations in strict
+   chronological order first (see renderNAVHistory), so toggling display order never touches
+   that math. */
+let navHistSortAsc=false, regSortAsc=false, usersSortAsc=false;
+function toggleNavHistSort(){ navHistSortAsc=!navHistSortAsc; renderNAVHistory(); }
+function toggleRegSort(){ regSortAsc=!regSortAsc; renderMemberRegistry(); }
+function toggleUsersSort(){ usersSortAsc=!usersSortAsc; renderUsersTable(); }
 let chartCumulative=null,chartShare=null,chartNAV=null;
 const today=new Date().toISOString().split('T')[0];
 document.getElementById('dep-date').value=today;
@@ -2774,9 +2787,15 @@ function renderUsersTable(){
   if(!users.length){wrap.innerHTML='<div class="empty">No users yet.</div>';return;}
   let h='<div style="overflow-x:auto"><table><thead><tr>'
     +'<th>Username</th><th style="width:90px">Role</th><th>Linked member</th>'
-    +'<th style="width:80px">Status</th><th style="width:100px">Created</th><th style="width:170px"></th>'
+    +'<th style="width:80px">Status</th>'
+    +`<th style="width:100px;cursor:pointer;user-select:none" onclick="toggleUsersSort()" title="Click to sort">Created ${usersSortAsc?'&#9650;':'&#9660;'}</th>`
+    +'<th style="width:170px"></th>'
     +'</tr></thead><tbody>';
-  users.forEach(u=>{
+  const sortedUsers=[...users].sort((a,b)=>{
+    const ac=a.createdAt||'', bc=b.createdAt||'';
+    return usersSortAsc?ac.localeCompare(bc):bc.localeCompare(ac);
+  });
+  sortedUsers.forEach(u=>{
     const isActive=u.active!==false;
     const isSelf=currentUser&&u.uid&&u.uid===currentUser.uid;
     const isLegacy=!u.uid;
@@ -3926,10 +3945,12 @@ function renderMemberRegistry(){
   const wrap=document.getElementById('reg-member-table-wrap');
   if(!membersRegistry.length){wrap.innerHTML='<div class="empty">No members registered yet.</div>';return;}
   let h='<div style="overflow-x:auto"><table><thead><tr>'
-    +'<th style="width:82px">Member ID</th><th>Name</th><th>Email</th><th style="width:108px">Date joined</th>'
+    +'<th style="width:82px">Member ID</th><th>Name</th><th>Email</th>'
+    +`<th style="width:108px;cursor:pointer;user-select:none" onclick="toggleRegSort()" title="Click to sort">Date joined ${regSortAsc?'&#9650;':'&#9660;'}</th>`
     +'<th style="width:60px;text-align:center">Active</th><th style="width:44px"></th>'
     +'</tr></thead><tbody>';
-  membersRegistry.forEach(m=>{
+  const sortedMembersReg=[...membersRegistry].sort((a,b)=>regSortAsc?a.dateJoined.localeCompare(b.dateJoined):b.dateJoined.localeCompare(a.dateJoined));
+  sortedMembersReg.forEach(m=>{
     const active=m.active!==false;
     const rowSt=active?'cursor:pointer':'cursor:pointer;color:#aaa9a4';
     const nameSt=active?'font-weight:600':'font-weight:600;color:#b4b2a9;text-decoration:line-through';
@@ -5980,7 +6001,10 @@ function renderNAVHistory(){
     </div>`;
   }
 
-  let rows='';
+  // Period/since-launch/subscription figures below MUST be computed from navValuations in
+  // strict chronological order (each row depends on the previous one) — only the render order
+  // of the built-up row strings is flipped afterward for display, via navHistSortAsc.
+  let rowsArr=[];
   navValuations.forEach((v,i)=>{
     const prevNav=i===0?initNav:navValuations[i-1].nav;
     const periodChange=v.nav-prevNav;
@@ -5998,7 +6022,7 @@ function renderNAVHistory(){
     const detailId=`nhrow-detail-${v.id}`;
 
     // Main row — clickable to expand detail
-    rows+=`<tr id="nhrow-${v.id}" style="cursor:${hasAssets?'pointer':'default'}"
+    rowsArr.push(`<tr id="nhrow-${v.id}" style="cursor:${hasAssets?'pointer':'default'}"
       onclick="${hasAssets?`toggleNAVRowDetail(${v.id})`:'void 0'}"
       title="${hasAssets?'Click to view investment breakdown':''}"
       onmouseover="this.style.background='#f4f4f2'"
@@ -6022,13 +6046,15 @@ function renderNAVHistory(){
     </tr>
     <tr id="${detailId}" style="display:none">
       <td colspan="9" style="padding:0;background:#fffdf7;border-bottom:0.5px solid #d3d1c7"></td>
-    </tr>`;
+    </tr>`);
   });
+  const orderedNavRows=navHistSortAsc?rowsArr:rowsArr.slice().reverse();
+  const rows=orderedNavRows.join('');
 
   wrap.innerHTML=warningBanner+
     '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse"><thead><tr>'+
     '<th style="width:20px"></th>'+
-    '<th style="width:92px">Date</th>'+
+    `<th style="width:92px;cursor:pointer;user-select:none" onclick="toggleNavHistSort()" title="Click to sort">Date ${navHistSortAsc?'&#9650;':'&#9660;'}</th>`+
     '<th class="num">Portfolio value</th>'+
     '<th class="num">Total units</th>'+
     '<th class="num" style="width:150px">NAV per unit</th>'+
@@ -8419,10 +8445,40 @@ function onSaleAssetChange(assetId){
   const totalCost=computeRemainingCostBasis(assetId,saleDate,editId);
   const costEl=document.getElementById('sale-cost');
   document.getElementById('sale-cost-raw').value=totalCost||'';
-  costEl.value=totalCost?totalCost.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}):'—';
+  if(totalCost){
+    costEl.value=totalCost.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+    costEl.classList.add('input-formatted');
+  } else {
+    costEl.value='';
+    costEl.classList.remove('input-formatted');
+  }
+  validateSaleCostBasis();
   previewSaleGL();
 }
+/* Warns (without blocking typing) when the Cost basis field — auto-filled above but editable —
+   is set higher than what's actually left in this asset's average-cost pool as of the sale date
+   (computeRemainingCostBasis, excluding this same sale when editing). A too-high override here
+   would understate the remaining cost basis available to later redemptions of the same asset,
+   potentially clamping to zero. Returns true/false so addSale()/saveSaleEdit() can gate on it. */
+function validateSaleCostBasis(){
+  const warnEl=document.getElementById('sale-cost-warning');
+  if(!warnEl) return true;
+  const assetId=document.getElementById('sale-asset-id').value;
+  const date=document.getElementById('sale-date').value||today;
+  const editId=parseInt(document.getElementById('sale-edit-id').value)||null;
+  const entered=parseFloat(document.getElementById('sale-cost-raw').value)||0;
+  if(!assetId||!entered){warnEl.style.display='none';return true;}
+  const available=computeRemainingCostBasis(assetId,date,editId);
+  if(entered>available+0.01){
+    warnEl.style.display='block';
+    warnEl.innerHTML=`&#9888; This is ${fmt(entered-available)} more than the ${fmt(available)} actually remaining in ${assetId}'s cost pool as of ${date}. Saving this will leave less than zero cost basis for later redemptions of this asset (clamped to zero), understating their gain.`;
+    return false;
+  }
+  warnEl.style.display='none';
+  return true;
+}
 function previewSaleGL(){
+  validateSaleCostBasis();
   const proceeds=parseFloat(document.getElementById('sale-proceeds-raw').value)||0;
   const cost=parseFloat(document.getElementById('sale-cost-raw').value)||0;
   const preview=document.getElementById('sale-gl-preview');if(!preview)return;
@@ -8456,6 +8512,7 @@ function addSale(){
   const date=document.getElementById('sale-date').value;
   const assetId=document.getElementById('sale-asset-id').value;
   forceRaw('sale-proceeds','sale-proceeds-raw');
+  forceRaw('sale-cost','sale-cost-raw');
   const proceeds=parseFloat(document.getElementById('sale-proceeds-raw').value)||0;
   const costBasis=parseFloat(document.getElementById('sale-cost-raw').value)||0;
   const note=document.getElementById('sale-note').value.trim();
@@ -8463,6 +8520,10 @@ function addSale(){
   if(!date){alert('Select a date.');return;}
   if(!assetId){alert('Select an asset.');return;}
   if(!proceeds||proceeds<=0){alert('Enter valid sale proceeds.');return;}
+  const availableCost=computeRemainingCostBasis(assetId,date,null);
+  if(costBasis>availableCost+0.01){
+    if(!confirm('The cost basis entered ('+fmt(costBasis)+') is more than the '+fmt(availableCost)+' actually remaining in '+assetId+"'s cost pool as of "+date+'. Later redemptions of this asset will show a smaller — or zero — remaining cost basis than they should.\n\nSave anyway?'))return;
+  }
   const item=portfolioItems.find(p=>p.assetId===assetId);
   const assetType=item?item.assetType:'';
   const settleAccount=document.getElementById('sale-settle')?.value||'1000';
@@ -8491,7 +8552,13 @@ function editSale(id){
   // needs to kick in once the user actually changes the asset or the date while editing.
   const costEl=document.getElementById('sale-cost');
   document.getElementById('sale-cost-raw').value=s.costBasis||'';
-  costEl.value=s.costBasis?s.costBasis.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}):'—';
+  if(s.costBasis){
+    costEl.value=s.costBasis.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+    costEl.classList.add('input-formatted');
+  } else {
+    costEl.value='';
+    costEl.classList.remove('input-formatted');
+  }
   const p=document.getElementById('sale-proceeds');
   document.getElementById('sale-proceeds-raw').value=s.proceeds;
   p.value=s.proceeds.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
@@ -8507,11 +8574,16 @@ function saveSaleEdit(){
   const date=document.getElementById('sale-date').value;
   const assetId=document.getElementById('sale-asset-id').value;
   forceRaw('sale-proceeds','sale-proceeds-raw');
+  forceRaw('sale-cost','sale-cost-raw');
   const proceeds=parseFloat(document.getElementById('sale-proceeds-raw').value)||0;
   const costBasis=parseFloat(document.getElementById('sale-cost-raw').value)||0;
   const note=document.getElementById('sale-note').value.trim();
   const redemptionType=document.getElementById('sale-redemption-type')?.value||'partial';
   if(!date||!assetId||!proceeds){alert('Complete all required fields.');return;}
+  const availableCost=computeRemainingCostBasis(assetId,date,id);
+  if(costBasis>availableCost+0.01){
+    if(!confirm('The cost basis entered ('+fmt(costBasis)+') is more than the '+fmt(availableCost)+' actually remaining in '+assetId+"'s cost pool as of "+date+'. Later redemptions of this asset will show a smaller — or zero — remaining cost basis than they should.\n\nSave anyway?'))return;
+  }
   const item=portfolioItems.find(p=>p.assetId===assetId);
   const assetType=item?item.assetType:'';
   const settleAccount=document.getElementById('sale-settle')?.value||'1000';
