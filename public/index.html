@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Like Minds Reimagined — v3.30.5</title>
+<title>Like Minds Reimagined — v3.30.6</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
@@ -1731,6 +1731,7 @@ let navHistSortAsc=false, regSortAsc=false, usersSortAsc=false;
 function toggleNavHistSort(){ navHistSortAsc=!navHistSortAsc; renderNAVHistory(); }
 function toggleRegSort(){ regSortAsc=!regSortAsc; renderMemberRegistry(); }
 function toggleUsersSort(){ usersSortAsc=!usersSortAsc; renderUsersTable(); }
+function toggleMemTxnSort(){ memTxnSortAsc=!memTxnSortAsc; if(window._memberDetailLastName) renderMemberDetail(window._memberDetailLastName, window._memberDetailLastTarget); }
 let chartCumulative=null,chartShare=null,chartNAV=null;
 const today=new Date().toISOString().split('T')[0];
 document.getElementById('dep-date').value=today;
@@ -2795,7 +2796,7 @@ function renderUsersTable(){
     const ac=a.createdAt||'', bc=b.createdAt||'';
     return usersSortAsc?ac.localeCompare(bc):bc.localeCompare(ac);
   });
-  sortedUsers.forEach(u=>{
+  users.forEach(u=>{
     const isActive=u.active!==false;
     const isSelf=currentUser&&u.uid&&u.uid===currentUser.uid;
     const isLegacy=!u.uid;
@@ -3145,6 +3146,17 @@ function getAccountBalance(code,asOfDate){
     e.lines.forEach(l=>{if(l.account===code){deb+=l.debit||0;cred+=l.credit||0;}});
   });
   return normalDebit?(deb-cred):(cred-deb);
+}
+/* Rollup version of getAccountBalance: an account's own postings plus every sub-account
+   nested beneath it (recursively), as of a given date. Used wherever a parent account's
+   TRUE total is needed — e.g. Cash and Cash Equivalents in the Valuation → Investment
+   breakdown, which must reflect every bank sub-account, not just direct postings to 1000. */
+function getAccountBalanceWithDescendants(code,asOfDate){
+  let bal=getAccountBalance(code,asOfDate);
+  getAllAccounts().filter(a=>a.parentCode===code).forEach(child=>{
+    bal+=getAccountBalanceWithDescendants(child.code,asOfDate);
+  });
+  return bal;
 }
 function getAccountActivity(code,fromDate,toDate){
   const normalDebit=isDebitNormal(code);
@@ -3950,7 +3962,7 @@ function renderMemberRegistry(){
     +'<th style="width:60px;text-align:center">Active</th><th style="width:44px"></th>'
     +'</tr></thead><tbody>';
   const sortedMembersReg=[...membersRegistry].sort((a,b)=>regSortAsc?a.dateJoined.localeCompare(b.dateJoined):b.dateJoined.localeCompare(a.dateJoined));
-  sortedMembersReg.forEach(m=>{
+  membersRegistry.forEach(m=>{
     const active=m.active!==false;
     const rowSt=active?'cursor:pointer':'cursor:pointer;color:#aaa9a4';
     const nameSt=active?'font-weight:600':'font-weight:600;color:#b4b2a9;text-decoration:line-through';
@@ -5692,12 +5704,39 @@ function onPortfolioValueManualInput(el){
 }
 
 /* ── Investment breakdown valuator ── */
+/* Read-only breakdown of every sub-account nested under `parentCode` (e.g. individual bank
+   accounts under 1000 — Cash and Cash Equivalents, added via Settings/Accounting → Chart of
+   Accounts, v3.18.7), each showing its own rollup balance (itself + any of its own
+   sub-accounts) as of `asOfDate`. Recurses to any depth, indenting each level, and is purely
+   informational — these rows are never editable; only the parent's total (av-input-cash) can
+   be adjusted, since that single figure is what feeds the portfolio value total. Returns ''
+   when the account has no sub-accounts, so nothing extra renders for a fund with a flat
+   chart of accounts. */
+function renderCashSubAccountRows(parentCode,asOfDate,depth){
+  depth=depth||0;
+  const children=getAllAccounts().filter(a=>a.parentCode===parentCode).sort((a,b)=>a.code.localeCompare(b.code));
+  if(!children.length) return '';
+  const header=depth===0?`<div style="font-size:10px;font-weight:600;color:#888780;text-transform:uppercase;letter-spacing:.04em;padding:6px 8px 3px">Sub-accounts <span style="font-weight:400;text-transform:none;letter-spacing:0">(included in the ledger balance above — read-only)</span></div>`:'';
+  const rows=children.map(sub=>{
+    const subBal=getAccountBalanceWithDescendants(sub.code,asOfDate);
+    const indent=20+depth*18;
+    return `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:5px 8px 5px ${indent}px;border-bottom:0.5px solid #f0ede4;font-size:12px">
+      <span style="color:#5f5e5a">&#8627; ${sub.name}${sub.note?` <span style="color:#b4b2a9">— ${sub.note}</span>`:''}</span>
+      <span style="font-variant-numeric:tabular-nums;font-weight:500;color:#1a1a18;flex-shrink:0">${fmt(subBal)}</span>
+    </div>${renderCashSubAccountRows(sub.code,asOfDate,depth+1)}`;
+  }).join('');
+  return header+rows;
+}
 function renderAssetValuator(){
   const body=document.getElementById('asset-valuator-body');
   if(!body)return;
   const valDateEl=document.getElementById('nav-val-date');
   const valDate=valDateEl&&valDateEl.value?valDateEl.value:today;
-  const cashBalance=getAccountBalance('1000',valDate);
+  // v3.30.6: Cash and Cash Equivalents is now the TRUE rollup of 1000 plus every nested
+  // sub-account (e.g. individual bank accounts added under it via Chart of Accounts,
+  // v3.18.7) — not just postings made directly to 1000. See renderCashSubAccountRows()
+  // for the read-only breakdown shown beneath the total.
+  const cashBalance=getAccountBalanceWithDescendants('1000',valDate);
   const lastVal=navValuations.length?[...navValuations].sort((a,b)=>b.date.localeCompare(a.date))[0]:null;
   const lastAssetValues=lastVal?.assetValues||{};
 
@@ -5724,6 +5763,7 @@ function renderAssetValuator(){
     </div>
     <div style="flex:0 0 140px;font-size:11px;color:#888780">Auto-filled — editable if reconciling with actual bank balance</div>
   </div>
+  ${renderCashSubAccountRows('1000',valDate)}
   <div style="margin-bottom:10px"></div>`;
 
   if(!portfolioItems.length){
@@ -6004,7 +6044,7 @@ function renderNAVHistory(){
   // Period/since-launch/subscription figures below MUST be computed from navValuations in
   // strict chronological order (each row depends on the previous one) — only the render order
   // of the built-up row strings is flipped afterward for display, via navHistSortAsc.
-  let rowsArr=[];
+    const navHistRows=[];
   navValuations.forEach((v,i)=>{
     const prevNav=i===0?initNav:navValuations[i-1].nav;
     const periodChange=v.nav-prevNav;
@@ -6021,8 +6061,9 @@ function renderNAVHistory(){
     const arrowId=`nhrow-arrow-${v.id}`;
     const detailId=`nhrow-detail-${v.id}`;
 
-    // Main row — clickable to expand detail
-    rowsArr.push(`<tr id="nhrow-${v.id}" style="cursor:${hasAssets?'pointer':'default'}"
+    // Period/since-launch % always computed against chronological order (i, navValuations[i-1])
+    // above — only the assembled blocks below get reordered for the newest/oldest toggle.
+    navHistRows.push(`<tr id="nhrow-${v.id}" style="cursor:${hasAssets?'pointer':'default'}"
       onclick="${hasAssets?`toggleNAVRowDetail(${v.id})`:'void 0'}"
       title="${hasAssets?'Click to view investment breakdown':''}"
       onmouseover="this.style.background='#f4f4f2'"
@@ -6048,8 +6089,7 @@ function renderNAVHistory(){
       <td colspan="9" style="padding:0;background:#fffdf7;border-bottom:0.5px solid #d3d1c7"></td>
     </tr>`);
   });
-  const orderedNavRows=navHistSortAsc?rowsArr:rowsArr.slice().reverse();
-  const rows=orderedNavRows.join('');
+  const rows=(navHistSortAsc?navHistRows:[...navHistRows].reverse()).join('');
 
   wrap.innerHTML=warningBanner+
     '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse"><thead><tr>'+
@@ -6417,6 +6457,8 @@ function collapsibleCard(id,title,content,startOpen){
 }
 
 function renderMemberDetail(name,targetId){
+  window._memberDetailLastName=name;
+  window._memberDetailLastTarget=targetId||'member-detail';
   const s=getMemberStats(name);
   const currentNAV=getCurrentNAV();
   const glColor=s.unrealisedGL>=0?'#3b6d11':'#a32d2d';
@@ -6520,6 +6562,8 @@ function renderMemberDetail(name,targetId){
   h+=collapsibleCard('mem-sec-perf','Performance metrics',perfContent,true);
 
   // Card 3: transaction history collapsible
+    // Running units must accumulate in strict chronological order — computed once below
+  // regardless of display order; only the assembled row list gets reordered for the toggle.
   const allTxns=[
     ...s.myDeps.map(d=>({date:d.date,type:'Subscription',amount:d.amount,nav:d.nav,units:d.units,sign:1})),
     ...s.myWdws.map(w=>({date:w.date,type:'Redemption',amount:w.amount,nav:w.nav,units:w.units,sign:-1})),
@@ -6530,28 +6574,29 @@ function renderMemberDetail(name,targetId){
   let txnContent='<div class="empty">No transactions.</div>';
   if(allTxns.length){
     let runUnits=0;
-    txnContent='<div style="overflow-x:auto"><table><thead><tr>'
-      +'<th style="width:90px">Date</th><th style="width:110px">Type</th>'
-      +'<th class="num">Amount</th><th class="num">NAV</th>'
-      +'<th class="num">Units</th><th class="num">Running units</th>'
-      +'</tr></thead><tbody>';
-    allTxns.forEach(t=>{
+    const txnRowsAsc=allTxns.map(t=>{
       runUnits+=t.sign*t.units;
       const typeColors={'Subscription':'background:#eaf3de;color:#27500a','Redemption':'background:#fcebeb;color:#791f1f','Transfer in':'background:#e6f1fb;color:#0c447c','Transfer out':'background:#faeeda;color:#633806'};
       const badgeSt=typeColors[t.type]||'';
       const amtCell=t.type.startsWith('Transfer')?'—':(t.sign<0?'-':'')+fmt(t.amount);
       const navCell=t.type.startsWith('Transfer')?'—':fmt(t.nav);
       const unitSign=t.sign>=0?'+':'-';
-      txnContent+=`<tr>
+      const runningSnapshot=runUnits;
+      return `<tr>
         <td>${t.date}</td>
         <td><span style="display:inline-block;font-size:10px;padding:2px 7px;border-radius:6px;font-weight:600;${badgeSt}">${t.type}</span></td>
         <td class="num" style="color:${t.sign>=0?'#1a1a18':'#a32d2d'}">${amtCell}</td>
         <td class="num">${navCell}</td>
         <td class="num" style="color:${t.sign>=0?'#3b6d11':'#a32d2d'}">${unitSign}${fmtU(t.units)}</td>
-        <td class="num" style="font-weight:600">${fmtU(Math.max(runUnits,0))}</td>
+        <td class="num" style="font-weight:600">${fmtU(Math.max(runningSnapshot,0))}</td>
       </tr>`;
     });
-    txnContent+='</tbody></table></div>';
+    const orderedTxnRows=memTxnSortAsc?txnRowsAsc:[...txnRowsAsc].reverse();
+    txnContent='<div style="overflow-x:auto"><table><thead><tr>'
+      +`<th style="width:90px;cursor:pointer;user-select:none" onclick="toggleMemTxnSort()" title="Click to sort">Date ${memTxnSortAsc?'&#9650;':'&#9660;'}</th><th style="width:110px">Type</th>`
+      +'<th class="num">Amount</th><th class="num">NAV</th>'
+      +'<th class="num">Units</th><th class="num">Running units</th>'
+      +'</tr></thead><tbody>'+orderedTxnRows.join('')+'</tbody></table></div>';
   }
   h+=collapsibleCard('mem-sec-contrib','Transaction history',txnContent,false);
 
