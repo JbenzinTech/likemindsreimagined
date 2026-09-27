@@ -2954,6 +2954,17 @@ function renderRolesTable(){
       <td></td>
     </tr>`);
   });
+  // Member is a built-in role (selectable in Users & Access) but isn't part of the
+  // PERMISSION_DEFS section/subsection grid the other roles use — it's a separate view-only
+  // portal for a single linked member's own statement — so it can't run through
+  // summarizeRoleAccess() and needs its own plain-English description here instead.
+  const memberCount=users.filter(u=>u.role==='Member').length;
+  rows.push(`<tr>
+    <td><strong>Member</strong></td>
+    <td><span style="font-size:11px;color:#888780">Built-in</span>${memberCount?' <span style="font-size:10px;color:#888780">('+memberCount+' user'+(memberCount!==1?'s':'')+')</span>':''}</td>
+    <td style="font-size:12px;color:#5f5e5a">View-only member portal — own account statement only; no access to fund-wide sections or other members' data.</td>
+    <td></td>
+  </tr>`);
   customRoles.forEach(r=>{
     const inUseCount=users.filter(u=>u.role===r.name).length;
     rows.push(`<tr>
