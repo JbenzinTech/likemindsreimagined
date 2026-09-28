@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Like Minds Reimagined — v3.30.7</title>
+<title>Like Minds Reimagined — v3.30.8</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
@@ -7059,27 +7059,104 @@ const SETTINGS_SUB_LABELS={'fund-identity':'Fund Identity','brokers':'Brokers','
    JOURNAL — manual entry + full journal view
 ══════════════════════════════════════════ */
 let jrnLineCount=0;
+/* Journal account fields are type-to-search inputs backed by one shared <datalist>
+   (matches on code OR name, anywhere in the text). The field's visible text is
+   "code — name"; jrnResolveAccount() turns whatever is typed back into an account code. */
+function jrnAccountLabel(code){
+  const a=getAllAccounts().find(x=>x.code===code);
+  return a?(a.code+' — '+a.name):(code||'');
+}
+function jrnResolveAccount(text){
+  const t=(text||'').trim();
+  if(!t)return '';
+  const all=getAllAccounts();
+  let a=all.find(x=>x.code===t);
+  if(a)return a.code;
+  const lead=t.split(' — ')[0].trim();
+  a=all.find(x=>x.code===lead);
+  if(a)return a.code;
+  a=all.find(x=>(x.code+' — '+x.name).toLowerCase()===t.toLowerCase()||x.name.toLowerCase()===t.toLowerCase());
+  return a?a.code:'';
+}
 function refreshJournalLineAccountOptions(){
-  const optionsHtml=[...getAllAccounts()].sort((a,b)=>a.code.localeCompare(b.code)).map(a=>`<option value="${a.code}">${a.code} — ${a.name}</option>`).join('');
-  document.querySelectorAll('.jrn-line-account').forEach(sel=>{
-    const cur=sel.value;
-    sel.innerHTML='<option value="">— Select account —</option>'+optionsHtml;
-    if(cur&&[...sel.options].some(o=>o.value===cur))sel.value=cur;
+  let dl=document.getElementById('jrn-account-list');
+  if(!dl){dl=document.createElement('datalist');dl.id='jrn-account-list';document.body.appendChild(dl);}
+  dl.innerHTML=[...getAllAccounts()].sort((a,b)=>a.code.localeCompare(b.code)).map(a=>`<option value="${a.code} — ${a.name}"></option>`).join('');
+  // re-normalise any typed text that matches an account whose name may have just changed
+  document.querySelectorAll('.jrn-line-account').forEach(inp=>{
+    const code=jrnResolveAccount(inp.value);
+    if(code)inp.value=jrnAccountLabel(code);
   });
+}
+/* Auto-balance: fills THIS row's empty debit/credit with whatever makes the whole entry
+   balance, working from every OTHER row — so it scales to entries with 3+ lines. A row
+   filled this way is flagged data-auto="1"; if the user later edits a different row the
+   flagged row re-balances itself, and if the user types in the flagged row itself it
+   becomes a normal manual row. */
+function jrnRowAmounts(row){
+  return {d:parseFloat(row.querySelector('.jrn-line-debit').value)||0,c:parseFloat(row.querySelector('.jrn-line-credit').value)||0};
+}
+function jrnAutoBalanceRow(row){
+  let od=0,oc=0;
+  document.querySelectorAll('#jrn-lines-wrap .row').forEach(r=>{
+    if(r===row)return;
+    const a=jrnRowAmounts(r);od+=a.d;oc+=a.c;
+  });
+  const diff=Math.round((od-oc)*100)/100;
+  const dEl=row.querySelector('.jrn-line-debit'),cEl=row.querySelector('.jrn-line-credit');
+  dEl.value='';cEl.value='';
+  if(Math.abs(diff)<0.005){row.dataset.auto='';return;}
+  if(diff>0)cEl.value=diff.toFixed(2);else dEl.value=(-diff).toFixed(2);
+  row.dataset.auto='1';
+}
+function onJrnAccountChange(inp){
+  const row=inp.closest('.row');
+  const code=jrnResolveAccount(inp.value);
+  if(code){
+    inp.value=jrnAccountLabel(code);
+    inp.style.borderColor='';
+    const a=jrnRowAmounts(row);
+    if(!a.d&&!a.c)jrnAutoBalanceRow(row);
+  } else {
+    inp.style.borderColor=inp.value.trim()?'#f09595':'';
+  }
+  checkJournalBalance();
+}
+function onJrnAmountInput(el,otherClass){
+  stripNonNumeric(el);
+  const row=el.closest('.row');
+  if(row.dataset.auto==='1'){
+    // user is overriding the auto-filled line — it becomes manual, and only the side they typed in stays
+    row.dataset.auto='';
+    if(el.value)row.querySelector(otherClass).value='';
+  }
+  // any other auto-filled line re-balances to the new totals
+  document.querySelectorAll('#jrn-lines-wrap .row').forEach(r=>{
+    if(r!==row&&r.dataset.auto==='1')jrnAutoBalanceRow(r);
+  });
+  checkJournalBalance();
+}
+function removeJournalLine(rowId){
+  const row=document.getElementById(rowId);
+  if(row)row.remove();
+  document.querySelectorAll('#jrn-lines-wrap .row').forEach(r=>{
+    if(r.dataset.auto==='1')jrnAutoBalanceRow(r);
+  });
+  checkJournalBalance();
 }
 function addJournalLine(){
   jrnLineCount++;
+  refreshJournalLineAccountOptions();
   const wrap=document.getElementById('jrn-lines-wrap');
   const rowId='jrn-line-'+jrnLineCount;
-  const optionsHtml=[...getAllAccounts()].sort((a,b)=>a.code.localeCompare(b.code)).map(a=>`<option value="${a.code}">${a.code} — ${a.name}</option>`).join('');
   const row=document.createElement('div');
   row.className='row';
   row.id=rowId;
   row.innerHTML=`
-    <div class="f15"><label>Account</label><select class="jrn-line-account"><option value="">— Select account —</option>${optionsHtml}</select></div>
-    <div class="f1"><label>Debit</label><input class="jrn-line-debit" type="text" placeholder="0.00" oninput="stripNonNumeric(this);checkJournalBalance()"/></div>
-    <div class="f1"><label>Credit</label><input class="jrn-line-credit" type="text" placeholder="0.00" oninput="stripNonNumeric(this);checkJournalBalance()"/></div>
-    <div style="flex:0;align-self:flex-end"><button onclick="document.getElementById('${rowId}').remove();checkJournalBalance()" class="btn-danger" style="padding:6px 10px">&#128465;</button></div>`;
+    <div class="f15"><label>Account</label><input class="jrn-line-account" type="text" list="jrn-account-list" autocomplete="off" placeholder="Type a code or name to search…" onchange="onJrnAccountChange(this)"/></div>
+    <div class="f1"><label>Debit</label><input class="jrn-line-debit" type="text" placeholder="0.00" oninput="onJrnAmountInput(this,'.jrn-line-credit')"/></div>
+    <div class="f1"><label>Credit</label><input class="jrn-line-credit" type="text" placeholder="0.00" oninput="onJrnAmountInput(this,'.jrn-line-debit')"/></div>
+    <div style="flex:0;align-self:flex-end"><button onclick="removeJournalLine('${rowId}')" class="btn-danger" style="padding:6px 10px">&#128465;</button></div>`;
   wrap.appendChild(row);
   checkJournalBalance();
 }
@@ -7105,7 +7182,7 @@ function postManualJournal(){
   if(rows.length<2){alert('A journal entry needs at least two lines.');return;}
   const lines=[];
   for(const row of rows){
-    const account=row.querySelector('.jrn-line-account').value;
+    const account=jrnResolveAccount(row.querySelector('.jrn-line-account').value);
     const debit=parseFloat(row.querySelector('.jrn-line-debit').value)||0;
     const credit=parseFloat(row.querySelector('.jrn-line-credit').value)||0;
     if(!account){alert('Select an account for every line.');return;}
@@ -7140,7 +7217,7 @@ function editJournalEntry(id){
     addJournalLine();
     const rows=[...document.querySelectorAll('#jrn-lines-wrap .row')];
     const row=rows[rows.length-1];
-    row.querySelector('.jrn-line-account').value=l.account;
+    row.querySelector('.jrn-line-account').value=jrnAccountLabel(l.account);
     row.querySelector('.jrn-line-debit').value=l.debit||'';
     row.querySelector('.jrn-line-credit').value=l.credit||'';
   });
@@ -7179,7 +7256,7 @@ function saveJournalEdit(id){
   if(rows.length<2){alert('A journal entry needs at least two lines.');return;}
   const lines=[];
   for(const row of rows){
-    const account=row.querySelector('.jrn-line-account').value;
+    const account=jrnResolveAccount(row.querySelector('.jrn-line-account').value);
     const debit=parseFloat(row.querySelector('.jrn-line-debit').value)||0;
     const credit=parseFloat(row.querySelector('.jrn-line-credit').value)||0;
     if(!account){alert('Select an account for every line.');return;}
