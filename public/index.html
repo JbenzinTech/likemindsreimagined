@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Like Minds Reimagined — v3.30.6</title>
+<title>Like Minds Reimagined — v3.30.7</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
@@ -1727,7 +1727,7 @@ function dateSortCmp(a,b,asc){ return asc? a.date.localeCompare(b.date) : b.date
    period-change/since-launch figures are still computed from navValuations in strict
    chronological order first (see renderNAVHistory), so toggling display order never touches
    that math. */
-let navHistSortAsc=false, regSortAsc=false, usersSortAsc=false;
+let navHistSortAsc=false, regSortAsc=false, usersSortAsc=false, memTxnSortAsc=false;
 function toggleNavHistSort(){ navHistSortAsc=!navHistSortAsc; renderNAVHistory(); }
 function toggleRegSort(){ regSortAsc=!regSortAsc; renderMemberRegistry(); }
 function toggleUsersSort(){ usersSortAsc=!usersSortAsc; renderUsersTable(); }
@@ -2796,7 +2796,7 @@ function renderUsersTable(){
     const ac=a.createdAt||'', bc=b.createdAt||'';
     return usersSortAsc?ac.localeCompare(bc):bc.localeCompare(ac);
   });
-  users.forEach(u=>{
+  sortedUsers.forEach(u=>{
     const isActive=u.active!==false;
     const isSelf=currentUser&&u.uid&&u.uid===currentUser.uid;
     const isLegacy=!u.uid;
@@ -3973,7 +3973,7 @@ function renderMemberRegistry(){
     +'<th style="width:60px;text-align:center">Active</th><th style="width:44px"></th>'
     +'</tr></thead><tbody>';
   const sortedMembersReg=[...membersRegistry].sort((a,b)=>regSortAsc?a.dateJoined.localeCompare(b.dateJoined):b.dateJoined.localeCompare(a.dateJoined));
-  membersRegistry.forEach(m=>{
+  sortedMembersReg.forEach(m=>{
     const active=m.active!==false;
     const rowSt=active?'cursor:pointer':'cursor:pointer;color:#aaa9a4';
     const nameSt=active?'font-weight:600':'font-weight:600;color:#b4b2a9;text-decoration:line-through';
