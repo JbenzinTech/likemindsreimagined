@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Like Minds Reimagined — v3.30.8</title>
+<title>Like Minds Reimagined — v3.31.2</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
@@ -114,6 +114,13 @@ tr:last-child td{border-bottom:none}
 .sub-group-header{text-transform:uppercase;letter-spacing:.05em;font-size:10px;font-weight:700;color:rgba(255,255,255,.32);padding:8px 16px 3px 30px}
 .sub-group-item{padding-left:44px}
 
+
+/* ── password show/hide toggle ── */
+.pw-wrap{position:relative}
+.pw-wrap input{padding-right:40px}
+.pw-toggle{position:absolute;top:50%;right:4px;transform:translateY(-50%);width:32px;height:30px;padding:0;display:flex;align-items:center;justify-content:center;border:none;background:transparent;color:#888780;border-radius:6px;cursor:pointer}
+.pw-toggle:hover{background:#f4f4f2;color:#1a1a18}
+
 /* ── responsive ── */
 .mobile-menu-btn{display:none;background:transparent;border:0.5px solid #d3d1c7;border-radius:8px;padding:6px 10px;font-size:16px;cursor:pointer;line-height:1;color:#1a1a18;flex-shrink:0}
 .sidebar-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:39}
@@ -179,8 +186,8 @@ tr:last-child td{border-bottom:none}
       <label id="setup-email-label">Email (used to log in)</label>
       <input id="setup-email" type="email" placeholder="e.g. admin@example.com"/>
     </div>
-    <div style="margin-bottom:12px"><label>Password</label><input id="setup-password" type="password" placeholder="At least 6 characters"/></div>
-    <div style="margin-bottom:16px"><label>Confirm password</label><input id="setup-password2" type="password" placeholder="Repeat password"/></div>
+    <div style="margin-bottom:12px"><label>Password</label><div class="pw-wrap"><input id="setup-password" type="password" placeholder="At least 6 characters"/><button type="button" class="pw-toggle" onclick="togglePasswordVisibility(this)" aria-label="Show password" title="Show password" tabindex="-1"><svg class="pw-eye-on" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg><svg class="pw-eye-off" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg></button></div></div>
+    <div style="margin-bottom:16px"><label>Confirm password</label><div class="pw-wrap"><input id="setup-password2" type="password" placeholder="Repeat password"/><button type="button" class="pw-toggle" onclick="togglePasswordVisibility(this)" aria-label="Show password" title="Show password" tabindex="-1"><svg class="pw-eye-on" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg><svg class="pw-eye-off" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg></button></div></div>
     <div id="setup-error" style="color:#a32d2d;font-size:12px;margin-bottom:10px"></div>
     <button class="btn-primary" style="width:100%;padding:10px" onclick="createFirstAdmin()">Create Admin account &amp; continue</button>
     <div style="text-align:center;margin-top:16px">
@@ -207,7 +214,7 @@ tr:last-child td{border-bottom:none}
       <button type="button" id="login-mode-btn-email" onclick="setAuthLoginMode('email')" style="flex:1;padding:7px;font-size:12px">Email</button>
     </div>
     <div style="margin-bottom:12px"><label id="login-username-label">Username</label><input id="login-username" type="text" onkeydown="if(event.key==='Enter')document.getElementById('login-password').focus()"/></div>
-    <div style="margin-bottom:16px"><label>Password</label><input id="login-password" type="password" onkeydown="if(event.key==='Enter')attemptLogin()"/></div>
+    <div style="margin-bottom:16px"><label>Password</label><div class="pw-wrap"><input id="login-password" type="password" onkeydown="if(event.key==='Enter')attemptLogin()"/><button type="button" class="pw-toggle" onclick="togglePasswordVisibility(this)" aria-label="Show password" title="Show password" tabindex="-1"><svg class="pw-eye-on" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg><svg class="pw-eye-off" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg></button></div></div>
     <div id="login-error" style="color:#a32d2d;font-size:12px;margin-bottom:10px"></div>
     <button class="btn-primary" style="width:100%;padding:10px" onclick="attemptLogin()">Log in</button>
   </div>
@@ -595,7 +602,7 @@ tr:last-child td{border-bottom:none}
       <div class="row">
         <div class="f1"><label id="user-username-label">Username</label><input id="user-username" type="text" placeholder="e.g. jane"/></div>
         <div class="f1" id="user-email-row" style="display:none"><label id="user-email-label">Email (used to log in)</label><input id="user-email" type="email" placeholder="e.g. jane@example.com"/></div>
-        <div class="f1"><label>Password <span id="user-password-hint" style="color:#888780;font-size:11px"></span></label><input id="user-password" type="password" placeholder="At least 6 characters"/></div>
+        <div class="f1"><label>Password <span id="user-password-hint" style="color:#888780;font-size:11px"></span></label><div class="pw-wrap"><input id="user-password" type="password" placeholder="At least 6 characters"/><button type="button" class="pw-toggle" onclick="togglePasswordVisibility(this)" aria-label="Show password" title="Show password" tabindex="-1"><svg class="pw-eye-on" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg><svg class="pw-eye-off" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg></button></div></div>
         <div class="f1">
           <label>Role</label>
           <select id="user-role" onchange="onUserRoleChange()">
@@ -869,7 +876,7 @@ tr:last-child td{border-bottom:none}
       All transactions recorded <em>after</em> this date will use the updated NAV.
     </div>
     <div class="row">
-      <div class="f1"><label>Valuation date</label><input id="nav-val-date" type="date" onchange="renderAssetValuator()"/></div>
+      <div class="f1"><label>Valuation date</label><input id="nav-val-date" type="date" onchange="renderAssetValuator();updateValDateHint()"/></div>
       <div class="f1">
         <label>Total portfolio value <span style="font-size:11px;color:#888780;font-weight:400">(auto-sums from investments below)</span></label>
         <input id="nav-val-portfolio" type="text" placeholder="Enter manually or use investment breakdown below"
@@ -881,6 +888,7 @@ tr:last-child td{border-bottom:none}
       <div class="f1"><label>Notes</label><input id="nav-val-notes" type="text" placeholder="e.g. End of Q1 2025"/></div>
       <div style="flex:0;align-self:flex-end"><button class="btn-primary" onclick="recordNAVValuation()">Record &#8599;</button></div>
     </div>
+    <div id="nav-val-date-hint" class="hint" style="margin-top:6px"></div>
     <div id="nav-preview" class="hint" style="margin-top:6px"></div>
   </div>
 
@@ -954,6 +962,9 @@ tr:last-child td{border-bottom:none}
         <select id="port-broker">
           <option value="">— Select broker —</option>
         </select>
+      </div>
+      <div class="f1"><label>Default funding account <span style="color:#888780;font-size:11px">(optional)</span></label>
+        <select id="port-default-account"><option value="">— None —</option></select>
       </div>
       <div class="f1"><label>Note</label><input id="port-description" type="text" placeholder="e.g. Dangote Cement shares"/></div>
       <div style="flex:0;display:flex;gap:6px;align-items:flex-end">
@@ -1046,7 +1057,7 @@ tr:last-child td{border-bottom:none}
       <div class="f1"><label>Date</label><input id="sale-date" type="date" onchange="onSaleAssetChange(document.getElementById('sale-asset-id').value)"/></div>
       <div class="f1">
         <label>Asset ID</label>
-        <select id="sale-asset-id" onchange="onSaleAssetChange(this.value)">
+        <select id="sale-asset-id" onchange="onSaleAssetChange(this.value);applyDefaultSettleAccount(this.value,'sale-settle')">
           <option value="">— Select asset —</option>
         </select>
       </div>
@@ -1301,7 +1312,7 @@ tr:last-child td{border-bottom:none}
       <div class="f1"><label>Date</label><input id="stx-date" type="date"/></div>
       <div class="f1"><label>Stock</label><input id="stx-stock" list="stock-ticker-list" placeholder="e.g. GTCO" style="text-transform:uppercase" oninput="onStockTickerInput(this.value,'stkh')"/></div>
       <div class="f1"><label>Asset ID <span style="color:#888780;font-size:11px">(optional)</span></label>
-        <select id="stx-asset-id"><option value="">— None —</option></select>
+        <select id="stx-asset-id" onchange="onStockAssetChange(this.value)"><option value="">— None —</option></select>
       </div>
       <div class="f1"><label>Type</label>
         <select id="stx-type"><option value="buy">Buy</option><option value="sell">Sell</option></select>
@@ -1336,7 +1347,7 @@ tr:last-child td{border-bottom:none}
     <div class="card-title" id="stkd-form-title" style="margin-bottom:10px">Record / update dividend</div>
     <input type="hidden" id="stkd-edit-id"/>
     <div class="row">
-      <div class="f1"><label>Stock</label><input id="stkd-stock" list="stock-ticker-list" placeholder="e.g. ZENITHBANK" style="text-transform:uppercase" oninput="updateStockDivAutoCalc()"/></div>
+      <div class="f1"><label>Stock</label><input id="stkd-stock" list="stock-holdings-list" placeholder="Select from holdings" style="text-transform:uppercase" oninput="onStockDivStockChange()"/><datalist id="stock-holdings-list"></datalist></div>
       <div class="f1"><label>Year</label><input id="stkd-year" type="number" value="2026" min="2000"/></div>
       <div class="f1"><label>DPS (&#8358;)</label><input id="stkd-dps" type="number" min="0" step="0.001" placeholder="0.000" oninput="updateStockDivAutoCalc()"/></div>
       <div class="f1"><label>Qual. Date</label><input id="stkd-qual" type="date" onchange="updateStockDivAutoCalc()"/></div>
@@ -1733,7 +1744,10 @@ function toggleRegSort(){ regSortAsc=!regSortAsc; renderMemberRegistry(); }
 function toggleUsersSort(){ usersSortAsc=!usersSortAsc; renderUsersTable(); }
 function toggleMemTxnSort(){ memTxnSortAsc=!memTxnSortAsc; if(window._memberDetailLastName) renderMemberDetail(window._memberDetailLastName, window._memberDetailLastTarget); }
 let chartCumulative=null,chartShare=null,chartNAV=null;
-const today=new Date().toISOString().split('T')[0];
+/* v3.31.2: local-calendar date string. toISOString() converts to UTC, which in any timezone ahead of
+   UTC (e.g. Nigeria, UTC+1) turns local midnight into the PREVIOUS day. */
+function localISODate(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+const today=localISODate(new Date());
 document.getElementById('dep-date').value=today;
 document.getElementById('fund-start').value=today;
 document.getElementById('reg-member-date').value=today;
@@ -2336,6 +2350,19 @@ async function tryMigrateLegacyUser(username,password){
   saveUsers();
   await pushUserProfile(profile);
   return profile;
+}
+
+/* Show/hide toggle for password fields (setup + login screens). Swaps the input between
+   type=password and type=text and flips the eye icon. UI-only — no data impact. */
+function togglePasswordVisibility(btn){
+  const input=btn.parentElement.querySelector('input');
+  if(!input)return;
+  const show=input.type==='password';
+  input.type=show?'text':'password';
+  btn.querySelector('.pw-eye-on').style.display=show?'none':'';
+  btn.querySelector('.pw-eye-off').style.display=show?'':'none';
+  const label=show?'Hide password':'Show password';
+  btn.setAttribute('aria-label',label);btn.title=label;
 }
 
 let authSetupMode='username';
@@ -3182,7 +3209,7 @@ function getAccountActivity(code,fromDate,toDate){
 function prevDay(dateStr){
   const d=new Date(dateStr+'T00:00:00');
   d.setDate(d.getDate()-1);
-  return d.toISOString().split('T')[0];
+  return localISODate(d);
 }
 function getNetAssets(asOfDate){
   const all=getAllAccounts();
@@ -3466,6 +3493,7 @@ function load(){
       [deposits,withdrawals].forEach(arr=>arr.forEach(rec=>{
         if(rec.applicableValuationDate===undefined) rec.applicableValuationDate=rec.date;
       }));
+      repairValuationLinks();
       // Migration: if journal is empty but transactions exist, rebuild journal from history
       if(!journalEntries.length&&(deposits.length||withdrawals.length||purchases.length||sales.length||incomeRecords.length)){
         rebuildJournalFromHistory();
@@ -3578,6 +3606,7 @@ function importJSON(){
       [deposits,withdrawals].forEach(arr=>arr.forEach(rec=>{
         if(rec.applicableValuationDate===undefined) rec.applicableValuationDate=rec.date;
       }));
+      repairValuationLinks();
 
       // Restore the true launch NAV the same way load() derives/protects it — trust the
       // backup's value if present, else re-derive so "since launch" math doesn't break.
@@ -3696,7 +3725,7 @@ function switchTab(id,btn){
   if(id==='port-income'){syncIncomeAssetDropdown();renderIncomeLedger();}
   if(id==='port-pnl') renderPnL();
   if(id==='port-allocation'){syncAllocAssetTypeDropdown();renderAllocationTable();}
-  if(id==='profit'){renderNAVHistory();updateNavUnitSummary();renderSubsSinceVal();renderAssetValHistory();}
+  if(id==='profit'){renderNAVHistory();updateNavUnitSummary();renderSubsSinceVal();renderAssetValHistory();updateValDateHint();}
   if(id==='journal'){renderJournal();refreshJournalLineAccountOptions();}
   if(id==='ledger'){syncLedgerAccountDropdown();renderLedgerView();}
   if(id==='trial-balance') renderTrialBalance();
@@ -3791,16 +3820,16 @@ function addDeposit(){
   if(!amount||amount<=0){alert('Enter a valid amount.');return;}
   if(!date){alert('Select a date.');return;}
   const applicableValuationDate=getApplicableValuationDate(date);
-  const existingVal=navValuations.find(v=>v.date===applicableValuationDate);
+  const existingVal=findValuationForRecord(date,applicableValuationDate);
   const overrideId=document.getElementById('dep-valuation-override')?.value||'';
-  let nav,units,pricingMode='scheduled',valuationId=null;
+  let nav,units,pricingMode='scheduled',valuationId=null,pricedBy=null;
   if(overrideId){
     // Admin explicitly pinned this deposit to a specific valuation's NAV (or the fund's
     // launch NAV via 'LAUNCH'), bypassing the twice-monthly schedule entirely.
     const resolved=resolveValuationOverride(overrideId);
     if(resolved){ nav=resolved.nav; units=amount/nav; pricingMode='manual'; valuationId=resolved.valuationId; }
   } else if(existingVal){
-    nav=existingVal.nav;units=amount/existingVal.nav;
+    nav=existingVal.nav;units=amount/existingVal.nav;pricedBy=existingVal.id;
   } else if(getDepPricingMode()==='immediate'&&navValuations.length>0){
     // Admin chose to price now rather than wait for the next scheduled valuation.
     nav=getCurrentNAV();units=amount/nav;pricingMode='immediate';
@@ -3808,7 +3837,7 @@ function addDeposit(){
     nav=null;units=null;
   }
   const newId=Date.now();
-  deposits.push({member,amount,date,nav,units,applicableValuationDate,pricingMode,valuationId,settleAccount,id:newId,locked:false});
+  deposits.push({member,amount,date,nav,units,applicableValuationDate,pricingMode,valuationId,pricedByValuationId:pricedBy,settleAccount,id:newId,locked:false});
   deposits.sort((a,b)=>a.date.localeCompare(b.date));
   // Settlement account and Members' Capital move immediately; only unit pricing waits for the scheduled valuation.
   postJournal(date,'Subscription — '+member,[{account:settleAccount,debit:amount,credit:0},{account:'3000',debit:0,credit:amount}],'deposit',newId);
@@ -3852,20 +3881,20 @@ function saveDepositEdit(){
   if(idx===-1){alert('Deposit not found.');return;}
   if(deposits[idx].locked){alert('This deposit is locked. Click the padlock icon to unlock it first.');return;}
   const applicableValuationDate=getApplicableValuationDate(date);
-  const existingVal=navValuations.find(v=>v.date===applicableValuationDate);
+  const existingVal=findValuationForRecord(date,applicableValuationDate);
   const overrideId=document.getElementById('dep-valuation-override')?.value||'';
-  let nav,units,pricingMode='scheduled',valuationId=null;
+  let nav,units,pricingMode='scheduled',valuationId=null,pricedBy=null;
   if(overrideId){
     const resolved=resolveValuationOverride(overrideId);
     if(resolved){ nav=resolved.nav; units=amount/nav; pricingMode='manual'; valuationId=resolved.valuationId; }
   } else if(existingVal){
-    nav=existingVal.nav;units=amount/existingVal.nav;
+    nav=existingVal.nav;units=amount/existingVal.nav;pricedBy=existingVal.id;
   } else if(getDepPricingMode()==='immediate'&&navValuations.length>0){
     nav=getCurrentNAV();units=amount/nav;pricingMode='immediate';
   } else {
     nav=null;units=null;
   }
-  deposits[idx]={...deposits[idx],member,amount,date,nav,units,applicableValuationDate,pricingMode,valuationId,settleAccount};
+  deposits[idx]={...deposits[idx],member,amount,date,nav,units,applicableValuationDate,pricingMode,valuationId,pricedByValuationId:pricedBy,settleAccount};
   deposits.sort((a,b)=>a.date.localeCompare(b.date));
   reverseJournalBySource('deposit',id);
   postJournal(date,'Subscription — '+member,[{account:settleAccount,debit:amount,credit:0},{account:'3000',debit:0,credit:amount}],'deposit',id);
@@ -4031,11 +4060,11 @@ function addWithdrawal(){
   if(!amount||amount<=0){alert('Enter a valid amount.');return;}
   if(!date){alert('Select a date.');return;}
   const applicableValuationDate=getApplicableValuationDate(date);
-  const existingVal=navValuations.find(v=>v.date===applicableValuationDate);
+  const existingVal=findValuationForRecord(date,applicableValuationDate);
   const nav=existingVal?existingVal.nav:null;
   const units=existingVal?amount/existingVal.nav:null;
   const newId=Date.now();
-  withdrawals.push({member,amount,date,nav,units,applicableValuationDate,settleAccount,id:newId,locked:false});
+  withdrawals.push({member,amount,date,nav,units,applicableValuationDate,pricedByValuationId:existingVal?existingVal.id:null,settleAccount,id:newId,locked:false});
   withdrawals.sort((a,b)=>a.date.localeCompare(b.date));
   postJournal(date,'Redemption — '+member,[{account:'3000',debit:amount,credit:0},{account:settleAccount,debit:0,credit:amount}],'withdrawal',newId);
   clearWithdrawalForm();
@@ -4070,10 +4099,10 @@ function saveWithdrawalEdit(){
   if(idx===-1){alert('Withdrawal not found.');return;}
   if(withdrawals[idx].locked){alert('This withdrawal is locked. Click the padlock icon to unlock it first.');return;}
   const applicableValuationDate=getApplicableValuationDate(date);
-  const existingVal=navValuations.find(v=>v.date===applicableValuationDate);
+  const existingVal=findValuationForRecord(date,applicableValuationDate);
   const nav=existingVal?existingVal.nav:null;
   const units=existingVal?amount/existingVal.nav:null;
-  withdrawals[idx]={...withdrawals[idx],member,amount,date,nav,units,applicableValuationDate,settleAccount};
+  withdrawals[idx]={...withdrawals[idx],member,amount,date,nav,units,applicableValuationDate,pricedByValuationId:existingVal?existingVal.id:null,settleAccount};
   withdrawals.sort((a,b)=>a.date.localeCompare(b.date));
   reverseJournalBySource('withdrawal',id);
   postJournal(date,'Redemption — '+member,[{account:'3000',debit:amount,credit:0},{account:settleAccount,debit:0,credit:amount}],'withdrawal',id);
@@ -4585,15 +4614,17 @@ function addPortfolioItem(){
   const assetId=document.getElementById('port-asset-id').value.trim();
   const broker=document.getElementById('port-broker').value.trim();
   const description=document.getElementById('port-description').value.trim();
+  const defaultSettleAccount=document.getElementById('port-default-account').value||null;
   if(!date){alert('Select a date.');return;}
   if(!assetType){alert('Select an asset type.');return;}
-  portfolioItems.push({date,assetType,assetId,broker,description,id:Date.now()});
+  portfolioItems.push({date,assetType,assetId,broker,description,defaultSettleAccount,id:Date.now()});
   portfolioItems.sort((a,b)=>a.date.localeCompare(b.date));
   document.getElementById('port-date').value=today;
   document.getElementById('port-asset-type').value='';
   document.getElementById('port-asset-id').value='';
   document.getElementById('port-broker').value='';
   document.getElementById('port-description').value='';
+  document.getElementById('port-default-account').value='';
   save();renderPortfolioRegister();syncPurchaseAssetDropdown();
 }
 function editPortfolioItem(id){
@@ -4603,6 +4634,8 @@ function editPortfolioItem(id){
   document.getElementById('port-asset-id').value=p.assetId;
   document.getElementById('port-broker').value=p.broker||'';
   document.getElementById('port-description').value=p.description||'';
+  syncPortDefaultAccountDropdown();
+  document.getElementById('port-default-account').value=p.defaultSettleAccount||'';
   document.getElementById('port-edit-id').value=id;
   setPortFormMode(true);
   document.getElementById('panel-port-register').querySelector('.card').scrollIntoView({behavior:'smooth',block:'nearest'});
@@ -4614,9 +4647,10 @@ function savePortfolioEdit(){
   const assetId=document.getElementById('port-asset-id').value.trim();
   const broker=document.getElementById('port-broker').value.trim();
   const description=document.getElementById('port-description').value.trim();
+  const defaultSettleAccount=document.getElementById('port-default-account').value||null;
   if(!date||!assetType){alert('Please complete required fields.');return;}
   const idx=portfolioItems.findIndex(x=>x.id===id);if(idx===-1)return;
-  portfolioItems[idx]={...portfolioItems[idx],date,assetType,assetId,broker,description};
+  portfolioItems[idx]={...portfolioItems[idx],date,assetType,assetId,broker,description,defaultSettleAccount};
   portfolioItems.sort((a,b)=>a.date.localeCompare(b.date));
   cancelPortfolioEdit();save();renderPortfolioRegister();syncPurchaseAssetDropdown();
 }
@@ -4626,6 +4660,7 @@ function cancelPortfolioEdit(){
   document.getElementById('port-asset-id').value='';
   document.getElementById('port-broker').value='';
   document.getElementById('port-description').value='';
+  document.getElementById('port-default-account').value='';
   setPortFormMode(false);
 }
 function removePortfolioItem(id){
@@ -4659,6 +4694,7 @@ function renderPortfolioRegister(){
     +'<th style="width:150px">Asset ID</th>'
     +'<th style="width:120px">Asset type</th>'
     +'<th>Broker</th>'
+    +'<th>Default account</th>'
     +'<th>Note</th>'
     +'<th style="width:44px"></th>'
     +'</tr></thead><tbody>';
@@ -4670,6 +4706,7 @@ function renderPortfolioRegister(){
       <td style="font-size:11px;font-weight:600;color:#0c447c">${p.assetId}</td>
       <td><span class="tag tag-purple">${typeLabel}</span></td>
       <td>${p.broker||'—'}</td>
+      <td style="font-size:12px">${p.defaultSettleAccount?getAccountName(p.defaultSettleAccount):'<span style="color:#c4c2bc">—</span>'}</td>
       <td>${p.description||'—'}</td>
       <td onclick="event.stopPropagation()"><button class="btn-danger" onclick="removePortfolioItem(${p.id})" style="padding:3px 7px;font-size:11px">&#128465;</button></td>
     </tr>`;
@@ -4696,6 +4733,7 @@ function onPurchAssetChange(assetId){
   const item=portfolioItems.find(p=>p.assetId===assetId);
   document.getElementById('purch-asset-type').value=item?(getAssetLabelFull(item.assetType)):'';
   document.getElementById('purch-broker').value=item?(item.broker||''):'';
+  applyDefaultSettleAccount(assetId,'purch-settle');
 }
 function setPurchFormMode(editing){
   document.getElementById('purch-form-title').textContent=editing?'Edit purchase':'Record a purchase';
@@ -4997,7 +5035,7 @@ function previewDepositUnits(){
   }
 
   const valDate=getApplicableValuationDate(date);
-  const existingVal=navValuations.find(v=>v.date===valDate);
+  const existingVal=findValuationForRecord(date,valDate);
   if(existingVal){
     // The scheduled valuation for this date has already been recorded — prices immediately
     // regardless of pricing choice, so the choice is moot here.
@@ -5005,11 +5043,11 @@ function previewDepositUnits(){
     const nav=existingVal.nav;
     if(amount>0){
       const units=amount/nav;
-      preview.innerHTML=`Prices at the <strong>${valDate}</strong> valuation, NAV <strong id="dep-nav-label">${getCurrency()}${nav.toLocaleString(undefined,{minimumFractionDigits:4,maximumFractionDigits:4})}</strong>
+      preview.innerHTML=`Prices at the <strong>${existingVal.date}</strong> valuation, NAV <strong id="dep-nav-label">${getCurrency()}${nav.toLocaleString(undefined,{minimumFractionDigits:4,maximumFractionDigits:4})}</strong>
         &nbsp;&rarr;&nbsp; Units to be issued: <strong style="color:#0c447c">${fmtU(units)}</strong>
         &nbsp;(${getCurrency()}${amount.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})} &divide; ${getCurrency()}${nav.toLocaleString(undefined,{minimumFractionDigits:4,maximumFractionDigits:4})})`;
     } else {
-      preview.innerHTML=`Prices at the <strong>${valDate}</strong> valuation, NAV <strong id="dep-nav-label">${getCurrency()}${nav.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}</strong>`;
+      preview.innerHTML=`Prices at the <strong>${existingVal.date}</strong> valuation, NAV <strong id="dep-nav-label">${getCurrency()}${nav.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}</strong>`;
     }
     return;
   }
@@ -5038,7 +5076,7 @@ function previewDepositUnits(){
       preview.innerHTML=`Will price immediately at the last valuation NAV <strong id="dep-nav-label">${getCurrency()}${nav.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}</strong>.`;
     }
   } else {
-    preview.innerHTML=`<span style="color:#c9a227">&#9203; Pending</span> — per the twice-monthly valuation rule, this deposit will be priced at the <strong>${valDate}</strong> valuation once it's recorded. Units are issued then, not today. <span id="dep-nav-label"></span>`;
+    preview.innerHTML=`<span style="color:#c9a227">&#9203; Pending</span> — per the twice-monthly valuation rule, this deposit will be priced by the next valuation recorded on or after <strong>${valDate}</strong>. Units are issued then, not today. <span id="dep-nav-label"></span>`;
   }
 }
 
@@ -5059,10 +5097,10 @@ function checkDepNavStaleness(){
   }
 
   const valDate=getApplicableValuationDate(depDate);
-  const existingVal=navValuations.find(v=>v.date===valDate);
+  const existingVal=findValuationForRecord(depDate,valDate);
 
   if(!existingVal){
-    msg.innerHTML=`&#128198; Per LMR's fixed twice-monthly valuation schedule, this subscription will price at the <strong>${valDate}</strong> valuation. That valuation hasn't been recorded yet, so this deposit will show as <strong style="color:#633806">Pending</strong> until an administrator records it via Portfolio → Valuation.`;
+    msg.innerHTML=`&#128198; Per LMR's fixed twice-monthly valuation schedule, this subscription will price at the valuation due on <strong>${valDate}</strong> (or any valuation recorded after it). That valuation hasn't been recorded yet, so this deposit will show as <strong style="color:#633806">Pending</strong> until an administrator records it via Portfolio → Valuation.`;
     banner.style.display='block';
     return;
   }
@@ -5498,7 +5536,7 @@ function getApplicableValuationDate(txDate){
   const y=d.getFullYear(),m=d.getMonth(),day=d.getDate();
   let target = day<=15 ? new Date(y,m,15) : new Date(y,m+1,0);
   while(target.getDay()===0||target.getDay()===6){ target.setDate(target.getDate()-1); }
-  return target.toISOString().split('T')[0];
+  return localISODate(target);
 }
 // True if a deposit/withdrawal is still awaiting its scheduled valuation (units not yet priced)
 function isPendingUnitized(rec){ return rec.units===null||rec.units===undefined; }
@@ -5510,14 +5548,65 @@ function isPendingUnitized(rec){ return rec.units===null||rec.units===undefined;
 // recorded on any OTHER date will silently fail to resolve pending records scheduled for the
 // real canonical date — they'd stay "Pending" indefinitely. This check exists to catch that
 // before it happens.
-function isCanonicalValuationDate(dateStr){
-  const d=new Date(dateStr+'T00:00:00');
-  const y=d.getFullYear(),m=d.getMonth();
+function scheduledDatesForMonth(dateStr){
+  const y=parseInt(dateStr.slice(0,4)),m=parseInt(dateStr.slice(5,7))-1;
   let mid=new Date(y,m,15);
   while(mid.getDay()===0||mid.getDay()===6){ mid.setDate(mid.getDate()-1); }
   let end=new Date(y,m+1,0);
   while(end.getDay()===0||end.getDay()===6){ end.setDate(end.getDate()-1); }
-  return dateStr===mid.toISOString().split('T')[0]||dateStr===end.toISOString().split('T')[0];
+  return [localISODate(mid),localISODate(end)];
+}
+function isCanonicalValuationDate(dateStr){
+  return scheduledDatesForMonth(dateStr).includes(dateStr);
+}
+/* v3.31.2 — relaxed valuation rule. Valuations are still scheduled twice monthly, but the date a
+   valuation is actually RECORDED on no longer has to match exactly. A pending deposit/withdrawal is
+   resolved by any valuation dated on or after its scheduled (applicable) valuation date. */
+function findValuationForRecord(txDate,applicableDate){
+  // earliest recorded valuation on/after the record's scheduled date, or null
+  return [...navValuations].filter(v=>v.date>=applicableDate).sort((a,b)=>a.date.localeCompare(b.date))[0]||null;
+}
+function getPendingForValuation(valuationDate){
+  const elig=r=>isPendingUnitized(r)&&r.applicableValuationDate&&r.applicableValuationDate<=valuationDate;
+  return {deps:deposits.filter(elig),wdws:withdrawals.filter(elig)};
+}
+/* Returns records this valuation priced back to Pending. Uses the stored pricedByValuationId;
+   records without one (priced before v3.31.2 and not backfilled) fall back to the old
+   applicable-date + NAV match. Manually pinned deposits (valuationId) are handled by callers. */
+function revertRecordsPricedByValuation(v){
+  const hit=r=>{
+    if(isPendingUnitized(r)) return false;
+    if(r.pricedByValuationId!=null) return r.pricedByValuationId===v.id;
+    return r.applicableValuationDate===v.date&&Math.abs(r.nav-v.nav)<0.00005&&r.valuationId==null&&r.pricingMode!=='immediate';
+  };
+  [...deposits,...withdrawals].forEach(r=>{ if(hit(r)){ r.nav=null; r.units=null; r.pricedByValuationId=null; } });
+}
+/* One-time/idempotent repair run on load and import: (1) pending records get their scheduled date
+   recomputed (fixes day-early dates produced by the pre-v3.31.2 UTC bug); (2) resolved records
+   are linked to the valuation that priced them where it can be identified unambiguously. */
+function repairValuationLinks(){
+  [deposits,withdrawals].forEach(arr=>arr.forEach(rec=>{
+    if(isPendingUnitized(rec)){
+      rec.applicableValuationDate=getApplicableValuationDate(rec.date);
+    } else if(rec.pricedByValuationId===undefined){
+      rec.pricedByValuationId=null;
+      if(rec.valuationId==null&&rec.pricingMode!=='immediate'&&rec.pricingMode!=='manual'){
+        const v=navValuations.find(x=>Math.abs(x.nav-rec.nav)<0.00005&&(x.date===rec.applicableValuationDate||x.date===getApplicableValuationDate(rec.date)));
+        if(v) rec.pricedByValuationId=v.id;
+      }
+    }
+  }));
+}
+function updateValDateHint(){
+  const el=document.getElementById('nav-val-date-hint');if(!el)return;
+  const date=document.getElementById('nav-val-date').value;
+  if(!date){el.textContent='';return;}
+  const [mid,end]=scheduledDatesForMonth(date);
+  const p=getPendingForValuation(date);
+  const n=p.deps.length+p.wdws.length;
+  const sched=isCanonicalValuationDate(date)?'This is a scheduled valuation date.':'This is not a scheduled date — that is allowed.';
+  el.innerHTML='Scheduled valuation dates this month: <strong>'+mid+'</strong> (mid-month) and <strong>'+end+'</strong> (month-end). '+sched+' '
+    +(n?'Recording this valuation will price <strong>'+n+'</strong> pending subscription/withdrawal record'+(n!==1?'s':'')+' whose scheduled date is on or before '+date+'.':'No pending records will be priced by this valuation.');
 }
 
 function previewNewNAV(){
@@ -5612,9 +5701,10 @@ function previewNewNAV(){
 // Each pending deposit/withdrawal is then unitized at that NAV, dated to its own transaction
 // date but priced as of this valuation — exactly the "settled at the NAV fixed on the next
 // applicable valuation date" rule.
-function resolvePendingForValuation(valuationDate,portfolioValue){
-  const pendingDeps=deposits.filter(d=>d.applicableValuationDate===valuationDate&&isPendingUnitized(d));
-  const pendingWdws=withdrawals.filter(w=>w.applicableValuationDate===valuationDate&&isPendingUnitized(w));
+function resolvePendingForValuation(valuationDate,portfolioValue,valuationId){
+  const pending=getPendingForValuation(valuationDate);
+  const pendingDeps=pending.deps;
+  const pendingWdws=pending.wdws;
   const pendingSubTotal=pendingDeps.reduce((s,d)=>s+d.amount,0);
   const pendingWdwTotal=pendingWdws.reduce((s,w)=>s+w.amount,0);
   const unitsBefore=getTotalUnits(); // already excludes these pending records
@@ -5630,8 +5720,8 @@ function resolvePendingForValuation(valuationDate,portfolioValue){
     nav=getCurrentNAV();
   }
 
-  pendingDeps.forEach(d=>{ d.nav=nav; d.units=d.amount/nav; });
-  pendingWdws.forEach(w=>{ w.nav=nav; w.units=w.amount/nav; });
+  pendingDeps.forEach(d=>{ d.nav=nav; d.units=d.amount/nav; d.pricedByValuationId=valuationId!=null?valuationId:null; });
+  pendingWdws.forEach(w=>{ w.nav=nav; w.units=w.amount/nav; w.pricedByValuationId=valuationId!=null?valuationId:null; });
 
   return nav;
 }
@@ -5643,14 +5733,12 @@ function recordNAVValuation(){
   const notes=document.getElementById('nav-val-notes').value.trim();
   if(!date){alert('Select a valuation date.');return;}
   if(!pv||pv<=0){alert('Enter a valid portfolio value. Use the Investment breakdown below or type it manually.');return;}
-  if(!isCanonicalValuationDate(date)){
-    if(!confirm('The date you entered ('+date+') is not one of LMR\'s scheduled twice-monthly valuation dates (the 15th or month-end, rolled to the nearest business day).\n\nAny subscriptions/withdrawals waiting for the correct scheduled date will NOT be resolved by this valuation and will remain Pending until a valuation is recorded on that exact date.\n\nRecord this valuation anyway?'))return;
-  }
   const unitsBeforeResolution=getTotalUnits();
-  const hasPendingHere=deposits.some(d=>d.applicableValuationDate===date&&isPendingUnitized(d))
-    ||withdrawals.some(w=>w.applicableValuationDate===date&&isPendingUnitized(w));
+  const pendingHere=getPendingForValuation(date);
+  const hasPendingHere=pendingHere.deps.length+pendingHere.wdws.length>0;
   if(!unitsBeforeResolution&&!hasPendingHere){alert('No units outstanding — record deposits first.');return;}
-  const nav=resolvePendingForValuation(date,pv);
+  const newValId=Date.now();
+  const nav=resolvePendingForValuation(date,pv,newValId);
 
   // Collect per-asset values from the breakdown panel if it's populated
   const assetValues={};
@@ -5667,7 +5755,7 @@ function recordNAVValuation(){
     }
   });
 
-  navValuations.push({date,portfolioValue:pv,totalUnits:getTotalUnits(),nav,notes,assetValues,id:Date.now()});
+  navValuations.push({date,portfolioValue:pv,totalUnits:getTotalUnits(),nav,notes,assetValues,id:newValId});
   navValuations.sort((a,b)=>a.date.localeCompare(b.date));
   recomputeAllValuationJournals();
   document.getElementById('init-nav').value=nav.toFixed(4);
@@ -5689,7 +5777,7 @@ function recordNAVValuation(){
   // nav/units in place, but the Deposits/Withdrawals ledger tables aren't panels this function
   // otherwise touches — without this they'd keep showing "Pending" until something else forced
   // a full renderAll().
-  save();renderNAVHistory();renderAssetValHistory();updateNavUnitSummary();renderSubsSinceVal();renderOverview();renderLedger();renderWithdrawalLedger();
+  save();renderNAVHistory();renderAssetValHistory();updateNavUnitSummary();renderSubsSinceVal();renderOverview();renderLedger();renderWithdrawalLedger();updateValDateHint();
 }
 
 /* ── collapsible toggle ── */
@@ -6008,13 +6096,10 @@ function renderAssetValHistory(){
 function removeNAVValuation(id){
   const v=navValuations.find(x=>x.id===id);
   if(!v)return;
-  if(!confirm('Remove this valuation record?\n\nThe NAV will revert to the previous valuation, or to the initial NAV if no other valuations exist.\n\nAny deposits/withdrawals this valuation priced will return to Pending until a valuation is recorded for '+v.date+' again.'))return;
-  // Return the deposits/withdrawals this valuation resolved back to pending — same matching
-  // logic as saveValuationEdit (applicable date + original NAV), so unrelated records aren't touched.
-  deposits.filter(d=>d.applicableValuationDate===v.date&&!isPendingUnitized(d)&&Math.abs(d.nav-v.nav)<0.00005)
-    .forEach(d=>{d.nav=null;d.units=null;});
-  withdrawals.filter(w=>w.applicableValuationDate===v.date&&!isPendingUnitized(w)&&Math.abs(w.nav-v.nav)<0.00005)
-    .forEach(w=>{w.nav=null;w.units=null;});
+  if(!confirm('Remove this valuation record?\n\nThe NAV will revert to the previous valuation, or to the initial NAV if no other valuations exist.\n\nAny deposits/withdrawals this valuation priced will return to Pending until another valuation on or after their scheduled date is recorded.'))return;
+  // Return the deposits/withdrawals this valuation priced back to pending (by pricedByValuationId;
+  // pre-v3.31.2 records without one fall back to the old date + NAV match).
+  revertRecordsPricedByValuation(v);
   // Revert any deposits manually pinned to this exact valuation back to Auto/pending —
   // the valuation they were priced against no longer exists.
   deposits.filter(d=>d.valuationId===id).forEach(d=>{ d.valuationId=null; d.pricingMode='scheduled'; d.nav=null; d.units=null; });
@@ -6289,13 +6374,6 @@ function saveValuationEdit(id){
   const notes=document.getElementById('nav-val-notes').value.trim();
   if(!date){alert('Select a valuation date.');return;}
   if(!pv||pv<=0){alert('Enter a valid portfolio value.');return;}
-  if(date!==v.date){
-    if(!confirm('You changed the valuation date from '+v.date+' to '+date+'. Deposits/withdrawals scheduled for '+v.date+' were priced against this record — changing the date may leave them mismatched with the twice-monthly schedule. Continue anyway?'))return;
-  }
-  if(!isCanonicalValuationDate(date)){
-    if(!confirm('The date '+date+' is not one of LMR\'s scheduled twice-monthly valuation dates (the 15th or month-end, rolled to the nearest business day).\n\nAny subscriptions/withdrawals waiting for the correct scheduled date will NOT be resolved and will remain Pending.\n\nSave anyway?'))return;
-  }
-
   // Collect updated asset values
   const assetValues={};
   const cashInpEdit=document.getElementById('av-input-cash');
@@ -6315,15 +6393,11 @@ function saveValuationEdit(id){
   // BOTH the original applicable date and the original NAV, so pre-migration/legacy records
   // that merely happen to share a date aren't accidentally touched. They're set back to pending
   // so resolvePendingForValuation() can correctly back them out of the new portfolio value below.
-  const originalDate=v.date, originalNav=v.nav;
-  const affectedDeps=deposits.filter(d=>d.applicableValuationDate===originalDate&&!isPendingUnitized(d)&&Math.abs(d.nav-originalNav)<0.00005);
-  const affectedWdws=withdrawals.filter(w=>w.applicableValuationDate===originalDate&&!isPendingUnitized(w)&&Math.abs(w.nav-originalNav)<0.00005);
-  affectedDeps.forEach(d=>{d.nav=null;d.units=null;});
-  affectedWdws.forEach(w=>{w.nav=null;w.units=null;});
+  revertRecordsPricedByValuation(v);
 
   const idx=navValuations.findIndex(x=>x.id===id);
   if(idx===-1)return;
-  const nav=resolvePendingForValuation(date,pv);
+  const nav=resolvePendingForValuation(date,pv,id);
   navValuations[idx]={...v,date,portfolioValue:pv,nav,notes,assetValues,totalUnits:getTotalUnits()};
 
   // Reprice deposits manually pinned to this exact valuation so they follow its updated NAV.
@@ -6337,7 +6411,7 @@ function saveValuationEdit(id){
   updateNavDisplay();
 
   cancelValuationEdit();
-  save();renderNAVHistory();renderAssetValHistory();updateNavUnitSummary();renderSubsSinceVal();renderOverview();renderLedger();renderWithdrawalLedger();
+  save();renderNAVHistory();renderAssetValHistory();updateNavUnitSummary();renderSubsSinceVal();renderOverview();renderLedger();renderWithdrawalLedger();updateValDateHint();
   setStatus('Valuation updated.');
 }
 
@@ -7357,6 +7431,7 @@ function populateSettleAccountDropdowns(){
     if(prev&&assetAccts.find(a=>a.code===prev)) sel.value=prev;
     else if(assetAccts.find(a=>a.code==='1000')) sel.value='1000';
   });
+  syncPortDefaultAccountDropdown();
   const depSel=document.getElementById('dep-settle');
   const depLabel=document.getElementById('dep-settle-label');
   if(depSel&&depLabel){
@@ -7371,6 +7446,35 @@ function populateSettleAccountDropdowns(){
     }
   }
 }
+/* Default funding account for a Register entry — limited to Cash and Cash Equivalents (1000)
+   and every sub-account nested beneath it, at any depth. Stored as an account code on
+   portfolioItems[].defaultSettleAccount (nullable). */
+function getCashAccountTree(){
+  const out=[];
+  const walk=(code)=>{
+    getAllAccounts().filter(a=>a.parentCode===code).sort((a,b)=>a.code.localeCompare(b.code)).forEach(c=>{out.push(c);walk(c.code);});
+  };
+  const root=getAllAccounts().find(a=>a.code==='1000');
+  if(root) out.push(root);
+  walk('1000');
+  return out;
+}
+function syncPortDefaultAccountDropdown(){
+  const sel=document.getElementById('port-default-account');if(!sel)return;
+  const prev=sel.value;
+  sel.innerHTML='<option value="">— None —</option>'+getCashAccountTree().map(a=>`<option value="${a.code}">${a.code} — ${a.name}</option>`).join('');
+  if(prev&&[...sel.options].some(o=>o.value===prev)) sel.value=prev;
+}
+/* Pre-selects a settlement dropdown with the Register entry's default funding account.
+   Does nothing when the entry has none, or the account no longer exists in the dropdown —
+   the user's current selection is left alone in that case. */
+function applyDefaultSettleAccount(assetId,selectId){
+  const item=portfolioItems.find(p=>p.assetId===assetId);
+  const sel=document.getElementById(selectId);
+  if(!item||!sel||!item.defaultSettleAccount) return;
+  if([...sel.options].some(o=>o.value===item.defaultSettleAccount)) sel.value=item.defaultSettleAccount;
+}
+function onStockAssetChange(assetId){ applyDefaultSettleAccount(assetId,'stx-settle'); }
 function syncLedgerAccountDropdown(){
   const sel=document.getElementById('ledger-account-select');if(!sel)return;
   const cur=sel.value;
@@ -7782,7 +7886,20 @@ function onStockTickerInput(val,prefix){
     if(sec&&document.getElementById('stkh-sector')) document.getElementById('stkh-sector').value=sec;
   }
 }
+/* Stock Dividends have no Asset ID field, so the default funding account is derived from the
+   Register entry the stock was bought under: the most recent transaction for this ticker that
+   was tagged with an Asset ID. Untagged stocks (or no default on that entry) leave the
+   Settlement account as the user set it. */
+function onStockDivStockChange(){
+  const ticker=document.getElementById('stkd-stock').value.trim().toUpperCase();
+  const tagged=stockTxns.filter(t=>t.stock===ticker&&t.assetId)
+    .sort((a,b)=>(b.date||'').localeCompare(a.date||'')||b.id-a.id)[0];
+  if(tagged) applyDefaultSettleAccount(tagged.assetId,'stkd-settle');
+  updateStockDivAutoCalc();
+}
 function syncStockDropdowns(){
+  const holdingsDl=document.getElementById('stock-holdings-list');
+  if(holdingsDl) holdingsDl.innerHTML=[...new Set(stockHoldings.map(h=>h.ticker))].sort().map(t=>`<option value="${t}">${stockCompanyName(t)||''}</option>`).join('');
   const allTickers=[...new Set([...STOCK_DIRECTORY.map(s=>s.symbol),...stockHoldings.map(h=>h.ticker),...stockTxns.map(t=>t.stock)])].sort();
   const dl=document.getElementById('stock-ticker-list');
   if(dl) dl.innerHTML=allTickers.map(t=>`<option value="${t}">`).join('');
@@ -8796,6 +8913,7 @@ function syncIncomeAssetDropdown(){
 function onIncomeAssetChange(assetId){
   const item=assetId==='FUND'?null:portfolioItems.find(p=>p.assetId===assetId);
   document.getElementById('income-asset-type').value=item?getAssetLabelFull(item.assetType):(assetId==='FUND'?'Fund level':'');
+  applyDefaultSettleAccount(assetId,'income-settle');
 }
 function clearIncomeForm(){
   document.getElementById('income-date').value=today;
