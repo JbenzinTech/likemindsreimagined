@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Like Minds Reimagined — v3.31.2</title>
+<title>Like Minds Reimagined — v3.32.0</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
@@ -232,6 +232,7 @@ tr:last-child td{border-bottom:none}
   </div>
   <div style="max-width:900px;margin:0 auto;padding:16px;width:100%">
     <div id="member-portal-content"></div>
+    <div id="portal-projection-mount"></div>
   </div>
 </div>
 
@@ -397,6 +398,9 @@ tr:last-child td{border-bottom:none}
       <button class="tab-btn sub-btn" id="nav-membership" onclick="switchTab('membership',this)">
         <span class="tab-icon" style="font-size:12px">&#128100;</span><span class="tab-label">Members Register</span>
       </button>
+      <button class="tab-btn sub-btn" id="nav-projection" onclick="switchTab('projection',this)">
+        <span class="tab-icon" style="font-size:12px">&#128200;</span><span class="tab-label">Projection</span>
+      </button>
       <button class="tab-btn sub-btn" id="nav-kyc" onclick="switchTab('kyc',this)">
         <span class="tab-icon" style="font-size:12px">&#128274;</span><span class="tab-label">KYC</span>
       </button>
@@ -413,6 +417,9 @@ tr:last-child td{border-bottom:none}
       </button>
       <button class="tab-btn sub-btn" id="nav-data-storage" onclick="switchSettingsTab('data-storage',this)">
         <span class="tab-icon" style="font-size:12px">&#128190;</span><span class="tab-label">Data Storage</span>
+      </button>
+      <button class="tab-btn sub-btn" id="nav-projection-settings" onclick="switchSettingsTab('projection-settings',this)">
+        <span class="tab-icon" style="font-size:12px">&#128200;</span><span class="tab-label">Projection Assumptions</span>
       </button>
       <button class="tab-btn sub-btn" id="nav-users-roles-group" onclick="toggleUsersRolesSubmenu(this)">
         <span class="tab-icon" style="font-size:12px">&#128101;</span><span class="tab-label">Users &amp; Roles</span>
@@ -629,6 +636,16 @@ tr:last-child td{border-bottom:none}
     <div class="card">
       <div class="card-title">User accounts <span style="font-weight:400;text-transform:none;letter-spacing:0;font-size:11px;color:#888780">&mdash; login credentials are held by Firebase Authentication, not stored in this app's data; role/profile info syncs separately from fund data when Cloud Sync is enabled (Settings &rarr; Data Storage); never included in manual JSON backups</span></div>
       <div id="users-table-wrap"><div class="empty">No users yet.</div></div>
+    </div>
+  </div>
+
+  <!-- Sub-panel: Projection Assumptions (v3.32.0) -->
+  <div id="settings-projection-settings" class="settings-sub" style="display:none">
+    <div class="card">
+      <div class="card-title">Projection assumptions</div>
+      <div style="font-size:12px;color:#5f5e5a;line-height:1.6;margin-bottom:12px">Expected annual return per asset class. Members' projections blend these by the fund's allocation. These are illustrative planning inputs, not forecasts or guarantees &mdash; set them conservatively.</div>
+      <div id="pjs-wrap"></div>
+      <div style="display:flex;gap:8px;margin-top:12px"><button class="btn-primary" onclick="saveProjectionSettings()">Save assumptions</button><button onclick="resetProjectionSettings()">Reset to defaults</button></div>
     </div>
   </div>
 
@@ -1587,6 +1604,15 @@ tr:last-child td{border-bottom:none}
   <div id="member-detail"></div>
 </div>
 
+<!-- PROJECTION (v3.32.0) -->
+<div id="panel-projection" class="panel p-members">
+  <div class="card">
+    <div class="card-title">Member projection</div>
+    <div class="row"><div class="f15"><label>Member</label><select id="projection-member-select" onchange="mountProjection('projection-mount',this.value)"><option value="">— Select a member —</option></select></div></div>
+  </div>
+  <div id="projection-mount"></div>
+</div>
+
 <!-- MEMBERSHIP (moved from settings) -->
 <div id="panel-membership" class="panel p-members">
   <!-- Form card -->
@@ -1767,6 +1793,7 @@ let stockTxns=[]; // {id, date, stock, type:'buy'|'sell', units, price, charges,
 let stockDividends=[]; // {id, stock, year, dps, qualDate, payDate, whtPct, whtAmt, gross, received, status}
 let fundLaunchNav=null; // TRUE immutable launch NAV, locked in once the first valuation is recorded — never overwritten by current-NAV updates
 let allocationTargets=[]; // [{id, assetType, targetPct, note}]
+let projectionAssumptions=null; // v3.32.0 — admin-set projection inputs {returns:{[assetTypeCode]:pct},inflationPct,spreadPct,feePct,fallbackReturnPct}
 let allocationHistory=[]; // [{id, date, action:'set'|'updated'|'removed', assetType, targetPct, previousPct, note, by}] — audit log of allocation target changes
 
 /* ══════════════════════════════════════════
@@ -1846,7 +1873,7 @@ function gatherSyncPayload(){
     allocationTargets,allocationHistory,stockHoldings,stockTxns,stockDividends,
     settings:{fundName:document.getElementById('fund-name').value,currency:getCurrency(),
       nav:document.getElementById('init-nav').value,startDate:document.getElementById('fund-start').value},
-    customRoles,
+    projectionAssumptions:projectionAssumptions||null,customRoles,
     updatedAt:Date.now()
   };
 }
@@ -1864,7 +1891,7 @@ function writeCloudDataToLocalStorage(d){
     journalEntries:d.journalEntries||[],corporateActions:d.corporateActions||[],customAccounts:d.customAccounts||[],
     coaOverrides:d.coaOverrides||{},fundLaunchNav:(d.fundLaunchNav!=null?d.fundLaunchNav:null),
     allocationTargets:d.allocationTargets||[],allocationHistory:d.allocationHistory||[],
-    stockHoldings:d.stockHoldings||[],stockTxns:d.stockTxns||[],stockDividends:d.stockDividends||[],
+    stockHoldings:d.stockHoldings||[],stockTxns:d.stockTxns||[],stockDividends:d.stockDividends||[],projectionAssumptions:d.projectionAssumptions||null,
     _v27:true,settings:d.settings||{}
   };
   localStorage.setItem(LS_KEY,JSON.stringify(fundData));
@@ -2183,6 +2210,7 @@ const PERMISSION_DEFS=[
   {key:'members',label:'Members',desc:'Member list and membership registration',subs:[
     {key:'members.list',label:'Report'},
     {key:'members.registration',label:'Members Register'},
+    {key:'members.projection',label:'Projection'},
   ]},
   {key:'kyc',label:'KYC',desc:'Bank details and personal identification — sensitive',subs:null},
   {key:'settings',label:'Settings',desc:'Fund identity, brokers, asset types, chart of accounts, data storage',subs:[
@@ -2191,6 +2219,7 @@ const PERMISSION_DEFS=[
     {key:'settings.assetTypes',label:'Asset Types'},
     {key:'settings.coa',label:'Chart of Accounts'},
     {key:'settings.dataStorage',label:'Data Storage'},
+    {key:'settings.projection',label:'Projection Assumptions'},
   ]},
   {key:'users',label:'Users & Access',desc:'Create/edit users and roles — grants control over others\' access',subs:null},
 ];
@@ -2243,7 +2272,7 @@ const TAB_PERMISSION_MAP={
   'deposits':'contributions.deposits','withdrawals':'contributions.withdrawals','transfers':'contributions.transfers',
   'profit':'portfolio.valuation','port-register':'portfolio.register','port-purchases':'portfolio.purchases','port-sales':'portfolio.sales','port-income':'portfolio.income','port-pnl':'portfolio.pnl','port-allocation':'portfolio.allocation','stocks-holdings':'portfolio.stocksHoldings','stocks-transactions':'portfolio.stocksTransactions','stocks-dividends':'portfolio.stocksDividends','fixed-income':'portfolio.fixedIncome',
   'journal':'accounting.journal','ledger':'accounting.ledger','trial-balance':'accounting.trialBalance','statements':'accounting.statements','corp-actions':'accounting.corpActions',
-  'members':'members.list','membership':'members.registration',
+  'members':'members.list','membership':'members.registration','projection':'members.projection','projection-settings':'settings.projection',
   'fund-identity':'settings.fundIdentity','brokers':'settings.brokers','asset-types':'settings.assetTypes','coa':'settings.coa','data-storage':'settings.dataStorage',
 };
 const TAB_BUTTON_ID_MAP={
@@ -2251,7 +2280,7 @@ const TAB_BUTTON_ID_MAP={
   'deposits':'nav-deposits','withdrawals':'nav-withdrawals','transfers':'nav-transfers',
   'profit':'nav-profit','port-register':'nav-port-register','port-purchases':'nav-port-purchases','port-sales':'nav-port-sales','port-income':'nav-port-income','port-pnl':'nav-port-pnl','port-allocation':'nav-port-allocation','stocks-holdings':'nav-stocks-holdings','stocks-transactions':'nav-stocks-transactions','stocks-dividends':'nav-stocks-dividends','fixed-income':'nav-fixed-income',
   'journal':'nav-journal','ledger':'nav-ledger','trial-balance':'nav-trial-balance','statements':'nav-statements','corp-actions':'nav-corp-actions',
-  'members':'nav-members-list','membership':'nav-membership',
+  'members':'nav-members-list','membership':'nav-membership','projection':'nav-projection','projection-settings':'nav-projection-settings',
   'fund-identity':'nav-fund-identity','brokers':'nav-brokers','asset-types':'nav-asset-types','coa':'nav-coa','data-storage':'nav-data-storage',
 };
 
@@ -2643,6 +2672,7 @@ function renderMemberPortal(){
     return;
   }
   renderMemberDetail(name,'member-portal-content');
+  mountProjection('portal-projection-mount',name);
 }
 
 /* ── Users & Access management (Admin only) ── */
@@ -3454,7 +3484,7 @@ function save(){
   const data={deposits,withdrawals,portfolioItems,purchases,brokerRegistry,assetTypeRegistry,
     navValuations,profitRounds,kycData,membersRegistry,transfers,sales,incomeRecords,
     journalEntries,corporateActions,customAccounts,coaOverrides,fundLaunchNav,allocationTargets,allocationHistory,
-    stockHoldings,stockTxns,stockDividends,_v27:true,
+    stockHoldings,stockTxns,stockDividends,projectionAssumptions,_v27:true,
     settings:{fundName:document.getElementById('fund-name').value,currency:getCurrency(),
     nav:document.getElementById('init-nav').value,startDate:document.getElementById('fund-start').value}};
   try{localStorage.setItem(LS_KEY,JSON.stringify(data));setStatus('Saved to device — '+new Date().toLocaleTimeString());scheduleAutoPush();}
@@ -3478,6 +3508,7 @@ function load(){
       stockHoldings=d.stockHoldings||[];
       stockTxns=d.stockTxns||[];
       stockDividends=d.stockDividends||[];
+      projectionAssumptions=d.projectionAssumptions||null;
       if(!d._v27){
         brokerRegistry=[];assetTypeRegistry=[];
         const fixed={deposits,withdrawals,portfolioItems,purchases,brokerRegistry,assetTypeRegistry,
@@ -3535,7 +3566,7 @@ function clearAllData(){
   localStorage.removeItem(LS_KEY);
   deposits=[];withdrawals=[];portfolioItems=[];purchases=[];brokerRegistry=[];assetTypeRegistry=[];navValuations=[];profitRounds=[];kycData={};membersRegistry=[];
   transfers=[];sales=[];incomeRecords=[];journalEntries=[];corporateActions=[];customAccounts=[];coaOverrides={};allocationTargets=[];allocationHistory=[];
-  stockHoldings=[];stockTxns=[];stockDividends=[];
+  stockHoldings=[];stockTxns=[];stockDividends=[];projectionAssumptions=null;
   fundLaunchNav=1000;
   selectedMember=null;selectedKYCMember=null;selectedOwnershipMember=null;window._ownershipSummary=[];window._msSummary=[];
   document.getElementById('fund-name').value='Investment Manager';
@@ -3546,7 +3577,7 @@ function clearAllData(){
   updateNavDisplay();renderAll();setStatus('All data cleared');
 }
 function exportJSON(){
-  const data={deposits,withdrawals,portfolioItems,purchases,brokerRegistry,assetTypeRegistry,navValuations,profitRounds,kycData,membersRegistry,transfers,sales,incomeRecords,journalEntries,corporateActions,customAccounts,coaOverrides,fundLaunchNav,allocationTargets,allocationHistory,stockHoldings,stockTxns,stockDividends,settings:{fundName:document.getElementById('fund-name').value,currency:getCurrency(),nav:document.getElementById('init-nav').value,startDate:document.getElementById('fund-start').value},exportedAt:new Date().toISOString()};
+  const data={deposits,withdrawals,portfolioItems,purchases,brokerRegistry,assetTypeRegistry,navValuations,profitRounds,kycData,membersRegistry,transfers,sales,incomeRecords,journalEntries,corporateActions,customAccounts,coaOverrides,fundLaunchNav,allocationTargets,allocationHistory,stockHoldings,stockTxns,stockDividends,projectionAssumptions,settings:{fundName:document.getElementById('fund-name').value,currency:getCurrency(),nav:document.getElementById('init-nav').value,startDate:document.getElementById('fund-start').value},exportedAt:new Date().toISOString()};
   const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);
   const fn=(document.getElementById('fund-name').value||'investment_club').replace(/[^a-z0-9]/gi,'_').toLowerCase();
@@ -3593,6 +3624,7 @@ function importJSON(){
       stockHoldings=d.stockHoldings||[];
       stockTxns=d.stockTxns||[];
       stockDividends=d.stockDividends||[];
+      projectionAssumptions=d.projectionAssumptions||null;
 
       if(d.settings){
         if(d.settings.fundName){document.getElementById('fund-name').value=d.settings.fundName;document.getElementById('fund-name-header').textContent=d.settings.fundName;}
@@ -3715,6 +3747,7 @@ function switchTab(id,btn){
   if(ts)ts.textContent=portLabels[id]||contribLabels[id]||acctLabels[id]||(TAB_LABELS[id]||id);
   if(id==='members') renderMemberPills();
   if(id==='membership') renderMemberRegistry();
+  if(id==='projection') initProjectionPanel();
   if(id==='kyc'){updateKYCMemberDropdown();renderKYCMembersOverview();}
   if(id==='transfers') renderTransferLedger();
   if(id==='deposits'){updateDepNavHint();checkDepNavStaleness();}
@@ -7126,8 +7159,8 @@ function showKYCTab(idx,total){
 
 /* ── nav/tab wiring ── */
 
-const TAB_LABELS={overview:'Overview',deposits:'Deposits',profit:'Valuation',members:'Members — Report',membership:'Members — Members Register',settings:'Settings',kyc:'Members — KYC'};
-const SETTINGS_SUB_LABELS={'fund-identity':'Fund Identity','brokers':'Brokers','asset-types':'Asset Types','data-storage':'Data Storage','roles':'Roles','users':'Users & Access'};
+const TAB_LABELS={overview:'Overview',deposits:'Deposits',profit:'Valuation',members:'Members — Report',membership:'Members — Members Register',projection:'Members — Projection',settings:'Settings',kyc:'Members — KYC'};
+const SETTINGS_SUB_LABELS={'fund-identity':'Fund Identity','brokers':'Brokers','asset-types':'Asset Types','data-storage':'Data Storage','projection-settings':'Projection Assumptions','roles':'Roles','users':'Users & Access'};
 
 /* ══════════════════════════════════════════
    JOURNAL — manual entry + full journal view
@@ -8516,6 +8549,7 @@ function switchSettingsTab(subId,btn){
   if(subId==='users') renderUsersTable();
   if(subId==='roles') renderRolesTable();
   if(subId==='data-storage') renderSyncPanel();
+  if(subId==='projection-settings') renderProjectionSettings();
 }
 
 /* ══════════════════════════════════════════
@@ -9457,9 +9491,140 @@ function renderAllocationHistory(){
     </tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 
+/* ══════════════════════════════════════════
+   PROJECTION MODULE (v3.32.0)
+   Asset-class level: blended return = sum(allocation weight x admin-set class return),
+   projected in NAV/unit terms from the member's current units. Deterministic, illustrative.
+══════════════════════════════════════════ */
+const PROJECTION_DEFAULTS={returns:{CASH:5,MMF:15,STK:12,BND:14,ETF:12,REI:10,FXD:14,OTH:8},inflationPct:15,spreadPct:3,feePct:0,fallbackReturnPct:10};
+let chartProjection=null;
+function getProjectionAssumptions(){
+  const p=projectionAssumptions||{};
+  const pick=(k)=>p[k]!=null?p[k]:PROJECTION_DEFAULTS[k];
+  return {returns:{...PROJECTION_DEFAULTS.returns,...(p.returns||{})},inflationPct:pick('inflationPct'),spreadPct:pick('spreadPct'),feePct:pick('feePct'),fallbackReturnPct:pick('fallbackReturnPct')};
+}
+function projectionReturnFor(a,code){
+  if(a.returns[code]!=null) return a.returns[code];
+  if(code==='OTHER'&&a.returns.OTH!=null) return a.returns.OTH;
+  return a.fallbackReturnPct;
+}
+function getProjectionBlend(basis){
+  const a=getProjectionAssumptions();
+  const weights={};let src='';
+  if(basis==='target'&&allocationTargets.length){
+    const t=allocationTargets.reduce((s,x)=>s+x.targetPct,0)||1;
+    allocationTargets.forEach(x=>{weights[x.assetType]=(weights[x.assetType]||0)+x.targetPct/t;});
+    src='target allocation';
+  } else {
+    const act=getActualAllocationByType();
+    if(act.total>0){
+      Object.entries(act.byType).forEach(([k,v])=>{weights[k]=v/act.total;});
+      src=act.source==='valuation'?'actual allocation (valuation of '+act.asOf+')':'purchase cost mix (no valuation yet)';
+    }
+  }
+  const rows=Object.entries(weights).map(([k,w])=>({type:k,weight:w,ret:projectionReturnFor(a,k)}));
+  if(!rows.length) src='no allocation data yet — fallback return used';
+  const gross=rows.length?rows.reduce((s,r)=>s+r.weight*r.ret,0):a.fallbackReturnPct;
+  return {rows,gross,net:gross-a.feePct,src,a};
+}
+function projectScenario(startValue,startNAV,annualPct,monthly,topup,years){
+  const rm=Math.pow(1+annualPct/100,1/12)-1;
+  let nav=startNAV,units=startNAV>0?startValue/startNAV:0,contributed=0;
+  if(topup>0){units+=topup/nav;contributed+=topup;}
+  const pts=[{y:0,value:units*nav,contributed}];
+  for(let m=1;m<=years*12;m++){
+    nav*=1+rm;
+    if(monthly>0){units+=monthly/nav;contributed+=monthly;}
+    if(m%12===0) pts.push({y:m/12,value:units*nav,contributed});
+  }
+  return {pts,nav,units,contributed,value:units*nav};
+}
+function initProjectionPanel(){
+  const sel=document.getElementById('projection-member-select');if(!sel)return;
+  const cur=sel.value;
+  const names=[...new Set([...membersRegistry.map(m=>m.name),...deposits.map(d=>d.member)])];
+  sel.innerHTML='<option value="">— Select a member —</option>'+names.map(n=>`<option value="${n}"${n===cur?' selected':''}>${n}</option>`).join('');
+  if(cur) mountProjection('projection-mount',cur);
+}
+function mountProjection(containerId,memberName){
+  const el=document.getElementById(containerId);if(!el)return;
+  if(chartProjection){chartProjection.destroy();chartProjection=null;}
+  if(!memberName){el.innerHTML='';return;}
+  window._pjMember=memberName;
+  const s=getMemberStats(memberName);
+  const defContrib=s.avgDeposit?Math.round(s.avgDeposit):0;
+  el.innerHTML=`<div class="card">
+    <div class="card-title">Investment projection — ${memberName}</div>
+    <div style="font-size:12px;color:#5f5e5a;line-height:1.6;margin-bottom:10px">Starts from your current holding of <strong>${fmtU(s.myNetUnits)}</strong> units (<strong>${fmt(s.currentValue)}</strong> at the current NAV) and projects how it could grow with your contributions.</div>
+    <div class="row">
+      <div class="f1"><label>Monthly contribution</label><input id="pj-contrib" type="number" min="0" step="1000" value="${defContrib}" oninput="runProjection()"/></div>
+      <div class="f1"><label>One-off top-up now</label><input id="pj-topup" type="number" min="0" step="1000" value="0" oninput="runProjection()"/></div>
+      <div class="f1"><label>Duration (years)</label><input id="pj-years" type="number" min="1" max="40" step="1" value="5" oninput="runProjection()"/></div>
+      <div class="f1"><label>Return basis</label><select id="pj-basis" onchange="runProjection()"><option value="actual">Fund's actual allocation</option><option value="target">Fund's target allocation</option></select></div>
+    </div>
+    <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:8px;cursor:pointer"><input id="pj-real" type="checkbox" style="width:auto" onchange="runProjection()"/> Show in today's money (adjust for inflation)</label>
+    <div id="pj-results"></div>
+    <div class="chart-wrap" style="height:260px"><canvas id="pj-chart"></canvas></div>
+    <div style="font-size:11px;color:#888780;margin-top:10px;line-height:1.6">&#9432; Illustrative estimate only — not a forecast or guarantee. Returns are assumptions set by the fund administrator; actual NAV movements can be lower or negative. Contributions are assumed monthly and bought at the projected NAV; fees are as set in the assumptions.</div>
+  </div>`;
+  runProjection();
+}
+function runProjection(){
+  const name=window._pjMember;const out=document.getElementById('pj-results');if(!name||!out)return;
+  const monthly=Math.max(parseFloat(document.getElementById('pj-contrib').value)||0,0);
+  const topup=Math.max(parseFloat(document.getElementById('pj-topup').value)||0,0);
+  const years=Math.min(Math.max(Math.round(parseFloat(document.getElementById('pj-years').value)||0),1),40);
+  const basis=document.getElementById('pj-basis').value;
+  const real=document.getElementById('pj-real').checked;
+  const blend=getProjectionBlend(basis),a=blend.a;
+  const s=getMemberStats(name),nav0=getCurrentNAV();
+  const defs=[['Conservative',blend.net-a.spreadPct,'#a32d2d'],['Base',blend.net,'#0c447c'],['Optimistic',blend.net+a.spreadPct,'#3b6d11']];
+  const df=(y)=>real?Math.pow(1+a.inflationPct/100,y):1;
+  const res=defs.map(([label,rate,color])=>({label,rate,color,...projectScenario(s.currentValue,nav0,rate,monthly,topup,years)}));
+  const costStart=s.myAmount+topup;
+  let h=`<div style="font-size:12px;color:#5f5e5a;margin-bottom:8px">Blended fund return: <strong>${blend.gross.toFixed(2)}%</strong> a year${a.feePct?` less ${a.feePct}% fees = <strong>${blend.net.toFixed(2)}%</strong>`:''}, from the ${blend.src}${blend.rows.length?': '+blend.rows.map(r=>`${allocTypeLabel(r.type)} ${(r.weight*100).toFixed(0)}% @ ${r.ret}%`).join(', '):''}. Scenarios use &plusmn;${a.spreadPct}%.${real?` Values deflated by ${a.inflationPct}% inflation.`:''}</div>`;
+  h+='<div style="overflow-x:auto"><table><thead><tr><th>Scenario</th><th class="num">Return / yr</th><th class="num">Total contributed</th><th class="num">Projected value (yr '+years+')</th><th class="num">Gain</th><th class="num">Units</th><th class="num">NAV / unit</th></tr></thead><tbody>';
+  res.forEach(r=>{
+    const v=r.value/df(years),cost=costStart+monthly*years*12;
+    const gain=v-cost;
+    h+=`<tr><td><strong style="color:${r.color}">${r.label}</strong></td><td class="num">${r.rate.toFixed(2)}%</td><td class="num">${fmt(cost)}</td><td class="num" style="font-weight:600">${fmt(v)}</td><td class="num" style="color:${gain>=0?'#3b6d11':'#a32d2d'}">${gain>=0?'+':''}${fmt(gain)}</td><td class="num">${fmtU(r.units)}</td><td class="num">${getCurrency()}${(r.nav/df(years)).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}</td></tr>`;
+  });
+  out.innerHTML=h+'</tbody></table></div>';
+  if(chartProjection){chartProjection.destroy();chartProjection=null;}
+  const cv=document.getElementById('pj-chart');if(!cv||typeof Chart==='undefined')return;
+  const labels=res[0].pts.map(p=>'Yr '+p.y);
+  const ds=res.map(r=>({label:r.label,data:r.pts.map(p=>+(p.value/df(p.y)).toFixed(2)),borderColor:r.color,backgroundColor:r.color,tension:.3,pointRadius:2}));
+  ds.push({label:'Amount paid in',data:res[1].pts.map(p=>+(s.myAmount+p.contributed).toFixed(2)),borderColor:'#888780',borderDash:[5,4],pointRadius:0,tension:0});
+  chartProjection=new Chart(cv.getContext('2d'),{type:'line',data:{labels,datasets:ds},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{boxWidth:12,font:{size:11}}}},scales:{y:{ticks:{callback:v=>getCurrency()+v.toLocaleString(),font:{size:10}},grid:{color:'rgba(0,0,0,.06)'}},x:{ticks:{font:{size:10}},grid:{display:false}}}}});
+}
+function renderProjectionSettings(){
+  const wrap=document.getElementById('pjs-wrap');if(!wrap)return;
+  const a=getProjectionAssumptions();
+  const types=[{code:'CASH',name:'Cash and Cash Equivalents'},...assetTypeRegistry.map(t=>({code:t.code,name:t.name+' ('+t.code+')'})),{code:'OTH',name:'Other / unclassified'}];
+  const inp=(id,v,lbl)=>`<div class="f1"><label>${lbl}</label><input id="${id}" type="number" step="0.1" value="${v}"/></div>`;
+  wrap.innerHTML='<div class="card-title">Expected annual return by asset class (%)</div><div class="row">'+types.map(t=>inp('pjs-ret-'+t.code,projectionReturnFor(a,t.code),t.name)).join('')+'</div>'
+    +'<div class="card-title" style="margin-top:8px">General</div><div class="row">'
+    +inp('pjs-fallback',a.fallbackReturnPct,'Fallback return (no allocation data) %')+inp('pjs-fee',a.feePct,'Annual fee drag %')+inp('pjs-spread',a.spreadPct,'Scenario spread (± %)')+inp('pjs-infl',a.inflationPct,'Inflation (for today\'s-money view) %')+'</div>';
+}
+function saveProjectionSettings(){
+  if(!hasPermission('settings.projection')){alert('Access denied — Projection assumptions are restricted for your role.');return;}
+  const num=(id)=>{const v=parseFloat(document.getElementById(id).value);return isNaN(v)?null:v;};
+  const returns={};
+  const els=[...document.querySelectorAll('#pjs-wrap [id^="pjs-ret-"]')];
+  for(const el of els){const v=parseFloat(el.value);if(isNaN(v)||v<-50||v>100){alert('Each return must be a number between -50 and 100.');return;}returns[el.id.replace('pjs-ret-','')]=v;}
+  const f=num('pjs-fallback'),fee=num('pjs-fee'),sp=num('pjs-spread'),inf=num('pjs-infl');
+  if([f,fee,sp,inf].some(v=>v===null||v<0&&v!==f)||sp>50||fee>20||inf>200){alert('Check the general values: fee, spread and inflation must be non-negative and reasonable.');return;}
+  projectionAssumptions={returns,fallbackReturnPct:f,feePct:fee,spreadPct:sp,inflationPct:inf};
+  save();setStatus('Projection assumptions saved.');
+}
+function resetProjectionSettings(){
+  if(!confirm('Reset all projection assumptions to the built-in defaults?'))return;
+  projectionAssumptions=null;save();renderProjectionSettings();
+}
+
 const CONTRIBUTIONS_TABS=new Set(['deposits','withdrawals','transfers']);
 const PORTFOLIO_TABS=new Set(['profit','port-register','port-purchases','port-sales','port-income','port-pnl','port-allocation','stocks-holdings','stocks-transactions','stocks-dividends','fixed-income']);
-const MEMBERS_TABS=new Set(['members','membership','kyc']);
+const MEMBERS_TABS=new Set(['members','membership','projection','kyc']);
 const ACCOUNTING_TABS=new Set(['journal','ledger','trial-balance','statements','corp-actions','coa']);
 
 // Boot: check auth state first — shows setup, login, member portal, or full app.
