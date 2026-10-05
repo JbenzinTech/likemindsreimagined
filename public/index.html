@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Like Minds Reimagined — v3.32.0</title>
+<title>Like Minds Reimagined — v3.32.2</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
@@ -868,6 +868,18 @@ tr:last-child td{border-bottom:none}
         <div style="font-size:12px;font-weight:500;color:#5f5e5a;margin-bottom:4px">NAV per unit over time</div>
         <div class="chart-wrap"><canvas id="chart-nav"></canvas></div>
       </div>
+    </div>
+    <div class="card" id="ov-perf-card" style="background:#fffdf7;border-color:#e8d48a">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px">
+        <div class="card-title" style="margin-bottom:0;color:#633806">Performance explanation &amp; outlook</div>
+        <div style="display:flex;align-items:center;gap:6px">
+          <label style="margin:0;font-size:12px">Outlook horizon</label>
+          <select id="ovp-horizon" onchange="renderFundPerformanceExplanation()" style="width:auto;font-size:12px;padding:5px 8px">
+            <option value="3">3 months</option><option value="6">6 months</option><option value="12" selected>12 months</option><option value="24">24 months</option>
+          </select>
+        </div>
+      </div>
+      <div id="ovp-body"></div>
     </div>
   </div>
 
@@ -5385,6 +5397,7 @@ function renderOverview(){
   }
   const oRounds=document.getElementById('ov-rounds');
   if(oRounds)oRounds.textContent=navValuations.length;
+  renderFundPerformanceExplanation();
 
   // lock init-nav if valuations exist
   const initNavEl=document.getElementById('init-nav');
@@ -5466,6 +5479,160 @@ function toggleMemberDeposits(idx,memberName){
     row.cells[0].textContent='▼';
     row.cells[0].style.color='#1a1a18';
   }
+}
+
+/* ══════════════════════════════════════════
+   FUND PERFORMANCE EXPLANATION & OUTLOOK (v3.32.2)
+   Display-only: reads navValuations, fundLaunchNav, purchases/sales, members. No schema or sync impact.
+   Scenarios are derived from the fund's own NAV history (launch NAV + every recorded valuation):
+   drift = compound daily rate since launch; range = volatility of valuation-to-valuation moves.
+══════════════════════════════════════════ */
+function ovpDaysBetween(a,b){
+  const pa=a.split('-').map(Number),pb=b.split('-').map(Number);
+  return Math.round((Date.UTC(pb[0],pb[1]-1,pb[2])-Date.UTC(pa[0],pa[1]-1,pa[2]))/86400000);
+}
+function ovpPct(x,dp){ return (x>=0?'+':'\u2212')+Math.abs(x).toFixed(dp==null?2:dp)+'%'; }
+function ovpCol(x){ return x>=0?'#3b6d11':'#a32d2d'; }
+function renderFundPerformanceExplanation(){
+  const body=document.getElementById('ovp-body');if(!body)return;
+  const P=t=>'<p style="margin:0 0 10px">'+t+'</p>';
+  const H=t=>'<div style="font-size:12px;font-weight:600;color:#1a1a18;margin:14px 0 4px">'+t+'</div>';
+  const out=h=>{body.innerHTML='<div style="font-size:13px;line-height:1.7;color:#3a3a36">'+h+'</div>';};
+  const c=getCurrency();
+  const navF=v=>c+Number(v).toLocaleString(undefined,{minimumFractionDigits:4,maximumFractionDigits:4});
+
+  const vals=[...navValuations].filter(v=>v.nav>0).sort((a,b)=>a.date.localeCompare(b.date));
+  if(!vals.length){
+    out(P('No portfolio valuation has been recorded yet, so there is nothing to explain. Once the first valuation is entered under Portfolio \u2192 Valuation, this card will describe how the fund has performed and show possible growth and downside scenarios.'));
+    return;
+  }
+  const last=vals[vals.length-1];
+  const launchNav=fundLaunchNav!=null?fundLaunchNav:(parseFloat(document.getElementById('init-nav').value)||1000);
+  const startInput=document.getElementById('fund-start').value||vals[0].date;
+  const launchDate=startInput<=vals[0].date?startInput:vals[0].date;
+  const pts=[{date:launchDate,nav:launchNav},...vals.map(v=>({date:v.date,nav:v.nav}))];
+  const segs=[];
+  for(let i=1;i<pts.length;i++){
+    const days=Math.max(1,ovpDaysBetween(pts[i-1].date,pts[i].date));
+    const ratio=pts[i].nav/pts[i-1].nav;
+    segs.push({from:pts[i-1].date,to:pts[i].date,days,pct:(ratio-1)*100,ln:Math.log(ratio)});
+  }
+  const n=segs.length;
+  const totalDays=Math.max(1,ovpDaysBetween(pts[0].date,last.date));
+  const sinceLaunchPct=(last.nav/launchNav-1)*100;
+  const mu=Math.log(last.nav/launchNav)/totalDays;      // continuous daily drift since launch
+  const annualised=(Math.exp(mu*365)-1)*100;
+  const daysAgo=Math.max(0,ovpDaysBetween(last.date,today));
+  const up=segs.filter(s=>s.pct>0).length, down=segs.filter(s=>s.pct<0).length;
+  const best=segs.reduce((a,b)=>b.pct>a.pct?b:a);
+  const worst=segs.reduce((a,b)=>b.pct<a.pct?b:a);
+  const lastSeg=segs[n-1];
+  const units=getTotalUnits();
+  const fundValue=units*last.nav;
+  let sigma=null;
+  if(n>=2){
+    const ss=segs.reduce((s,x)=>s+Math.pow(x.ln-mu*x.days,2),0);
+    const sd=segs.reduce((s,x)=>s+x.days,0);
+    sigma=Math.sqrt(ss/sd*n/(n-1));
+  }
+  const thin=n<4||totalDays<90;
+
+  let h='';
+
+  /* 1 — where the fund stands */
+  h+=H('Where the fund stands');
+  h+=P(`At the latest valuation on <strong>${last.date}</strong> (${daysAgo===0?'today':daysAgo+' day'+(daysAgo!==1?'s':'')+' ago'}), the pooled portfolio was valued at <strong>${fmt(last.portfolioValue)}</strong> with <strong>${fmtU(last.totalUnits)}</strong> units outstanding, giving a unit price (NAV) of <strong>${navF(last.nav)}</strong>. Against the launch price of ${navF(launchNav)}, that is <strong style="color:${ovpCol(sinceLaunchPct)}">${ovpPct(sinceLaunchPct)}</strong> over ${totalDays} day${totalDays!==1?'s':''}${totalDays>=60?`, which works out to roughly <strong style="color:${ovpCol(annualised)}">${ovpPct(annualised,1)} a year</strong> if that pace were sustained`:''}. Because NAV is a per-unit price, it reflects investment performance only \u2014 new subscriptions and withdrawals do not move it, even though they change the portfolio's total value.`);
+  h+=P(`Since the previous valuation (${lastSeg.from===launchDate&&n===1?'launch':lastSeg.from}), NAV moved <strong style="color:${ovpCol(lastSeg.pct)}">${ovpPct(lastSeg.pct)}</strong> over ${lastSeg.days} day${lastSeg.days!==1?'s':''}.`);
+  if(daysAgo>45) h+=P(`<span style="color:#633806">&#9888; The last valuation is ${daysAgo} days old. Anything below describes the fund as it was then \u2014 record a fresh valuation for an up-to-date picture.</span>`);
+
+  /* 2 — consistency */
+  h+=H('How consistent the performance has been');
+  if(n>=2){
+    h+=P(`Across <strong>${n}</strong> valuation periods, NAV rose in <strong>${up}</strong> and fell in <strong>${down}</strong>${n-up-down?` (${n-up-down} flat)`:''}. The strongest period was <strong style="color:#3b6d11">${ovpPct(best.pct)}</strong> (to ${best.to}) and the weakest <strong style="color:${ovpCol(worst.pct)}">${ovpPct(worst.pct)}</strong> (to ${worst.to}). ${sigma!=null&&sigma*Math.sqrt(30)*100>=3?'Movements between valuations have been fairly large, so expect a wide range of outcomes.':'Movements between valuations have been fairly moderate.'}`);
+  } else {
+    h+=P(`Only one valuation period exists so far (<strong>${ovpPct(lastSeg.pct)}</strong>), which is too little to say whether performance is steady or erratic.`);
+  }
+
+  /* 3 — portfolio makeup */
+  h+=H('What is driving it');
+  const av=last.assetValues||{};
+  const entries=Object.entries(av).filter(([,v])=>v>0);
+  if(entries.length){
+    const tot=entries.reduce((s,[,v])=>s+v,0);
+    const cash=av.CASH||0;
+    const holds=entries.filter(([k])=>k!=='CASH').map(([k,v])=>{
+      const cost=computeRemainingCostBasis(k,last.date,null);
+      return {id:k,val:v,cost,pct:cost>0?(v/cost-1)*100:null};
+    }).sort((a,b)=>b.val-a.val);
+    let t=`The valuation recorded <strong>${fmt(tot)}</strong> by investment: <strong>${(cash/tot*100).toFixed(0)}%</strong> in cash and cash equivalents and <strong>${((tot-cash)/tot*100).toFixed(0)}%</strong> in ${holds.length} holding${holds.length!==1?'s':''}.`;
+    if(holds.length){
+      const topShare=holds[0].val/tot*100;
+      t+=` The largest holding, <strong>${holds[0].id}</strong>, is ${topShare.toFixed(0)}% of the portfolio${topShare>50?' \u2014 a concentrated position, so the fund\u2019s result leans heavily on how it performs':' \u2014 reasonably spread'}.`;
+      const withCost=holds.filter(x=>x.pct!==null);
+      if(withCost.length){
+        const ahead=withCost.filter(x=>x.pct>=0).length;
+        const bestH=withCost.reduce((a,b)=>b.pct>a.pct?b:a), worstH=withCost.reduce((a,b)=>b.pct<a.pct?b:a);
+        t+=` Measured against remaining cost, <strong>${ahead}</strong> of ${withCost.length} holding${withCost.length!==1?'s are':' is'} ahead.`;
+        if(withCost.length>1) t+=` Best: ${bestH.id} (${ovpPct(bestH.pct,1)}); weakest: ${worstH.id} (${ovpPct(worstH.pct,1)}).`;
+      }
+    }
+    h+=P(t);
+    if(cash/tot>0.4) h+=P('A large share of the fund is sitting in cash. That cushions falls but also limits growth until it is put to work.');
+  } else {
+    h+=P('No per-investment breakdown was recorded with the last valuation, so the makeup of the portfolio cannot be commented on. Using the Investment breakdown when recording a valuation makes this section more useful.');
+  }
+
+  /* 4 — members */
+  h+=H('What it means for members');
+  const names=[...new Set([...deposits.map(d=>d.member),...withdrawals.map(w=>w.member)])];
+  const stats=names.map(getMemberStats).filter(s=>s.myNetUnits>0);
+  const under=stats.filter(s=>s.unrealisedGL<0).length;
+  const netInvested=deposits.reduce((s,d)=>s+d.amount,0)-withdrawals.reduce((s,w)=>s+w.amount,0);
+  const unreal=fundValue-netInvested;
+  let mt=`At this NAV, members' units are worth <strong>${fmt(fundValue)}</strong> against <strong>${fmt(netInvested)}</strong> paid in net \u2014 an unrealised ${unreal>=0?'gain':'loss'} of <strong style="color:${ovpCol(unreal)}">${fmt(Math.abs(unreal))}</strong>.`;
+  if(stats.length) mt+=under>0?` <strong style="color:#a32d2d">${under}</strong> of ${stats.length} active member${stats.length!==1?'s are':' is'} currently below what they paid in, usually because they subscribed at a higher NAV.`:` All ${stats.length} active member${stats.length!==1?'s are':' is'} currently at or above what they paid in.`;
+  h+=P(mt);
+  const pend=[...deposits,...withdrawals].filter(isPendingUnitized).length;
+  if(pend) h+=P(`<span style="color:#633806">${pend} subscription/withdrawal record${pend!==1?'s are':' is'} still awaiting pricing and ${pend!==1?'are':'is'} not yet included in the unit figures above.</span>`);
+
+  /* 5 — scenarios */
+  const months=parseInt((document.getElementById('ovp-horizon')||{}).value)||12;
+  const T=months/12*365;
+  const mk=(label,color,assume,lnT)=>{const nav=last.nav*Math.exp(lnT);return{label,color,assume,nav,pct:(nav/last.nav-1)*100,value:units*nav};};
+  const sc=[];
+  const baseLn=mu*T;
+  if(sigma!=null){
+    const band=sigma*Math.sqrt(T);
+    sc.push(mk('Growth','#3b6d11','Pace so far, plus one typical swing in the fund\u2019s favour',baseLn+band));
+    sc.push(mk('Base','#0c447c','Fund keeps compounding at its average pace since launch',baseLn));
+    sc.push(mk('Downside','#a32d2d','Pace so far, minus one typical swing against the fund',baseLn-band));
+  } else {
+    sc.push(mk('Base','#0c447c','Fund keeps compounding at its average pace since launch',baseLn));
+  }
+  if(worst.pct<0){
+    const nav=last.nav*(1+worst.pct/100);
+    sc.push({label:'Stress',color:'#791f1f',assume:`The weakest period so far (${ovpPct(worst.pct)}) repeats once`,nav,pct:worst.pct,value:units*nav});
+  }
+  h+=H(`Where it could go over the next ${months} months`);
+  h+=P(`These scenarios extend the fund\u2019s own record forward. The <strong>Base</strong> case assumes NAV keeps compounding at its average pace since launch${sigma!=null?`; <strong>Growth</strong> and <strong>Downside</strong> add or subtract one typical swing, based on how much NAV has varied between valuations`:''}.${worst.pct<0?' <strong>Stress</strong> shows what a repeat of the worst period so far would do to today\u2019s NAV.':''}`);
+  let tb='<div style="overflow-x:auto"><table style="font-size:12px"><thead><tr><th style="width:90px">Scenario</th><th style="white-space:normal">Assumption</th><th class="num" style="width:120px">NAV / unit</th><th class="num" style="width:80px">Change</th><th class="num" style="width:140px">Fund value*</th></tr></thead><tbody>';
+  sc.forEach(r=>{
+    tb+=`<tr><td><strong style="color:${r.color}">${r.label}</strong></td><td style="white-space:normal;font-size:12px;color:#5f5e5a">${r.assume}</td><td class="num">${navF(r.nav)}</td><td class="num" style="color:${ovpCol(r.pct)};font-weight:600">${ovpPct(r.pct,1)}</td><td class="num" style="font-weight:600">${fmt(r.value)}</td></tr>`;
+  });
+  tb+='</tbody></table></div><div style="font-size:11px;color:#888780;margin:6px 0 10px">*Today\u2019s '+fmtU(units)+' units at the projected NAV \u2014 excludes any future subscriptions or withdrawals.</div>';
+  h+=tb;
+  if(sigma==null) h+=P('A range of outcomes can be shown once at least two valuation periods have been recorded.');
+
+  /* 6 — caveats */
+  h+=H('How much weight to put on this');
+  let cav=`This outlook rests on <strong>${n}</strong> valuation period${n!==1?'s':''} spanning <strong>${totalDays}</strong> day${totalDays!==1?'s':''}.`;
+  if(thin) cav+=' That is a short record, so a single good or bad month can swing the numbers a lot \u2014 treat the scenarios as a rough guide, not an expectation.';
+  else cav+=' That is a reasonable record, but markets can behave very differently from the past.';
+  if(Math.abs(annualised)>40&&totalDays<365) cav+=` The average pace (${ovpPct(annualised,0)} a year) is unusually ${annualised>0?'high':'low'} for the period covered and is unlikely to be sustained.`;
+  h+=P(cav);
+  h+=P('This is an illustration drawn from past valuations, not a forecast or a guarantee. Real returns vary from period to period and can be negative. For a personalised view, members can use Members \u2192 Projection.');
+
+  out(h);
 }
 
 /* ── charts ── */
@@ -9565,6 +9732,7 @@ function mountProjection(containerId,memberName){
     <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:8px;cursor:pointer"><input id="pj-real" type="checkbox" style="width:auto" onchange="runProjection()"/> Show in today's money (adjust for inflation)</label>
     <div id="pj-results"></div>
     <div class="chart-wrap" style="height:260px"><canvas id="pj-chart"></canvas></div>
+    <div id="pj-explain"></div>
     <div style="font-size:11px;color:#888780;margin-top:10px;line-height:1.6">&#9432; Illustrative estimate only — not a forecast or guarantee. Returns are assumptions set by the fund administrator; actual NAV movements can be lower or negative. Contributions are assumed monthly and bought at the projected NAV; fees are as set in the assumptions.</div>
   </div>`;
   runProjection();
@@ -9590,12 +9758,69 @@ function runProjection(){
     h+=`<tr><td><strong style="color:${r.color}">${r.label}</strong></td><td class="num">${r.rate.toFixed(2)}%</td><td class="num">${fmt(cost)}</td><td class="num" style="font-weight:600">${fmt(v)}</td><td class="num" style="color:${gain>=0?'#3b6d11':'#a32d2d'}">${gain>=0?'+':''}${fmt(gain)}</td><td class="num">${fmtU(r.units)}</td><td class="num">${getCurrency()}${(r.nav/df(years)).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}</td></tr>`;
   });
   out.innerHTML=h+'</tbody></table></div>';
+  renderProjectionExplanation({name,s,nav0,monthly,topup,years,real,blend,a,res,df,costStart});
   if(chartProjection){chartProjection.destroy();chartProjection=null;}
   const cv=document.getElementById('pj-chart');if(!cv||typeof Chart==='undefined')return;
   const labels=res[0].pts.map(p=>'Yr '+p.y);
   const ds=res.map(r=>({label:r.label,data:r.pts.map(p=>+(p.value/df(p.y)).toFixed(2)),borderColor:r.color,backgroundColor:r.color,tension:.3,pointRadius:2}));
   ds.push({label:'Amount paid in',data:res[1].pts.map(p=>+(s.myAmount+p.contributed).toFixed(2)),borderColor:'#888780',borderDash:[5,4],pointRadius:0,tension:0});
   chartProjection=new Chart(cv.getContext('2d'),{type:'line',data:{labels,datasets:ds},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{boxWidth:12,font:{size:11}}}},scales:{y:{ticks:{callback:v=>getCurrency()+v.toLocaleString(),font:{size:10}},grid:{color:'rgba(0,0,0,.06)'}},x:{ticks:{font:{size:10}},grid:{display:false}}}}});
+}
+/* v3.32.1 — plain-language walkthrough of the projection result, shown under the chart.
+   Display-only: reads the same figures runProjection() already computed; no data/schema impact. */
+function renderProjectionExplanation(c){
+  const el=document.getElementById('pj-explain');if(!el)return;
+  const {name,s,nav0,monthly,topup,years,real,blend,a,res,df,costStart}=c;
+  const yrs=years===1?'1 year':years+' years';
+  const months=years*12;
+  const cons=res[0],base=res[1],opt=res[2];
+  const totalNew=topup+monthly*months;
+  if(s.myNetUnits<=0&&totalNew<=0){
+    el.innerHTML='<div class="card" style="background:#f4f4f2"><div class="card-title">What this means</div><div style="font-size:13px;line-height:1.7;color:#5f5e5a">You do not hold any units yet and no contribution has been entered, so there is nothing to project. Enter a monthly contribution or a one-off top-up above to see how it could grow.</div></div>';
+    return;
+  }
+  const val=r=>r.value/df(years);
+  const cost=costStart+monthly*months;
+  const baseV=val(base),consV=val(cons),optV=val(opt);
+  const gain=baseV-cost;
+  const gainShare=baseV>0?Math.max(gain,0)/baseV*100:0;
+  const nominalBase=base.value;
+  const realBase=nominalBase/Math.pow(1+a.inflationPct/100,years);
+  const P=t=>'<p style="margin:0 0 10px">'+t+'</p>';
+  const H=t=>'<div style="font-size:12px;font-weight:600;color:#1a1a18;margin:14px 0 4px">'+t+'</div>';
+  let h='';
+
+  h+=H('Where you are today');
+  if(s.myNetUnits>0){
+    h+=P(`${name}, you currently hold <strong>${fmtU(s.myNetUnits)} units</strong>. At today's unit price (NAV) of <strong>${fmt(nav0)}</strong>, they are worth <strong>${fmt(s.currentValue)}</strong>. You have paid in <strong>${fmt(s.myAmount)}</strong> so far, so your holding is currently ${s.unrealisedGL>=0?'ahead of':'behind'} what you paid by <strong>${fmt(Math.abs(s.unrealisedGL))}</strong>.`);
+  } else {
+    h+=P('You do not hold any units yet, so this projection starts from zero and is built entirely from the contributions you enter above.');
+  }
+
+  h+=H('What you are adding');
+  const adds=[];
+  if(topup>0) adds.push(`a one-off top-up of <strong>${fmt(topup)}</strong> right now`);
+  if(monthly>0) adds.push(`<strong>${fmt(monthly)}</strong> every month for ${months} months (${yrs})`);
+  h+=P(adds.length?`The projection assumes ${adds.join(' and ')}. In total that is <strong>${fmt(totalNew)}</strong> of new money. Every contribution buys units at the unit price of that month, so the same amount buys fewer units when the price is higher and more when it is lower.`:'You have not entered any new contributions, so the result below shows only how your existing units could grow on their own.');
+
+  h+=H('Where the growth comes from');
+  h+=P(`The fund's money is spread across different kinds of investments, and each kind has an expected yearly return set by your fund administrator. Blending them by the fund's mix gives about <strong>${blend.gross.toFixed(2)}% a year</strong>${a.feePct?`; after allowing <strong>${a.feePct}%</strong> a year for fees this becomes <strong>${blend.net.toFixed(2)}%</strong>`:''}. This is the <strong>Base</strong> case. <strong>Conservative</strong> assumes ${a.spreadPct} percentage points less each year (${cons.rate.toFixed(2)}%) and <strong>Optimistic</strong> assumes ${a.spreadPct} points more (${opt.rate.toFixed(2)}%).${blend.rows.length?'':' There is no allocation data yet, so a general fallback return was used.'}`);
+
+  h+=H(`What could happen in ${yrs}`);
+  h+=P(`In the <strong>Base</strong> case, your holding could grow to about <strong>${fmt(baseV)}</strong>${real?" in today's money":''}. Of the roughly <strong>${fmt(cost)}</strong> you would have paid in altogether, that is a ${gain>=0?'gain':'shortfall'} of <strong>${fmt(Math.abs(gain))}</strong>${gain>=0&&gainShare>0?`, meaning about ${gainShare.toFixed(0)}% of the final value would come from investment growth rather than your own money`:''}. Your units would increase from ${fmtU(s.myNetUnits)} to about <strong>${fmtU(base.units)}</strong>, and the unit price would move from ${fmt(nav0)} to about <strong>${fmt(base.nav/df(years))}</strong>.`);
+  h+=P(`The realistic range is wide. If returns are weaker (<strong>Conservative</strong>) you could end with about <strong>${fmt(consV)}</strong>; if they are stronger (<strong>Optimistic</strong>), about <strong>${fmt(optV)}</strong>. ${consV<cost?'Note that in the Conservative case the final value is <strong>below</strong> the total you would have paid in, so you could be worse off than your contributions.':'Even in the Conservative case the final value is above the total you would have paid in.'}`);
+
+  h+=H('Inflation');
+  if(real){
+    h+=P(`You are viewing results in <strong>today's money</strong>: future amounts have been reduced by an assumed ${a.inflationPct}% yearly inflation, so they show what the money could buy at today's prices. Untick the box above to see the larger, un-adjusted numbers.`);
+  } else {
+    h+=P(`These figures are in <strong>future naira</strong>, not today's prices. With inflation assumed at ${a.inflationPct}% a year, the Base value of ${fmt(nominalBase)} would buy roughly what <strong>${fmt(realBase)}</strong> buys today. Tick &ldquo;Show in today's money&rdquo; above to see every figure this way.`);
+  }
+
+  h+=H('Please remember');
+  h+=P('This is an illustration based on assumed returns, not a prediction or a promise. Real returns rise and fall from month to month and can be negative; a fund can lose value, especially over short periods. Use the range of results to plan sensibly rather than relying on any single number.');
+
+  el.innerHTML='<div class="card" style="background:#fffdf7;border-color:#e8d48a;margin-top:12px"><div class="card-title" style="color:#633806">What this means &mdash; in plain language</div><div style="font-size:13px;line-height:1.7;color:#3a3a36">'+h+'</div></div>';
 }
 function renderProjectionSettings(){
   const wrap=document.getElementById('pjs-wrap');if(!wrap)return;
