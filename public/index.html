@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Like Minds Reimagined — v3.32.2</title>
+<title>Like Minds Reimagined — v3.32.4</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
@@ -163,6 +163,41 @@ tr:last-child td{border-bottom:none}
   .metric{min-width:100%}
 }
 @media(max-width:580px){.field-row,.field-row.three{grid-template-columns:1fr}}
+
+/* ── Overview → Fund Summary: coloured cards, larger type, hover explanations (v3.32.4) ── */
+#overview-ov-fund .card{padding:18px;border-top-width:4px;border-top-style:solid}
+#overview-ov-fund .card-title{font-size:14px;font-weight:700;letter-spacing:.05em}
+#overview-ov-fund .metric{padding:16px;min-width:170px;border-left:5px solid transparent;border-radius:10px}
+#overview-ov-fund .metric-label{font-size:13px;font-weight:600}
+#overview-ov-fund .metric-val{font-size:22px;font-weight:600}
+#overview-ov-fund .metric-sub{font-size:12.5px}
+#overview-ov-fund .chart-grid-2{gap:12px;margin-bottom:12px}
+#overview-ov-fund .chart-grid-2 .card{margin-bottom:0}
+#overview-ov-fund .chart-wrap{height:250px}
+.ov-c-blue{background:#f4f9fe;border-color:#b5d4f4;border-top-color:#378add}.ov-c-blue .card-title{color:#0c447c}
+.ov-c-green{background:#f7fbf1;border-color:#c0dd97;border-top-color:#639922}.ov-c-green .card-title{color:#27500a}
+.ov-c-purple{background:#f8f7ff;border-color:#cfcbf5;border-top-color:#7f77dd}.ov-c-purple .card-title{color:#3c3489}
+.ov-c-teal{background:#f2faf6;border-color:#a9dcc8;border-top-color:#1d9e75}.ov-c-teal .card-title{color:#085041}
+.ov-c-amber{background:#fffbf1;border-color:#ecd89a;border-top-color:#ef9f27}.ov-c-amber .card-title{color:#633806}
+.ov-c-coral{background:#fef6f2;border-color:#f2c8b6;border-top-color:#d85a30}.ov-c-coral .card-title{color:#712b13}
+.t-blue{background:#e6f1fb;border-left-color:#378add!important}.t-blue .metric-label{color:#0c447c}
+.t-green{background:#eaf3de;border-left-color:#639922!important}.t-green .metric-label{color:#27500a}
+.t-amber{background:#faeeda;border-left-color:#ef9f27!important}.t-amber .metric-label{color:#633806}
+.t-purple{background:#eeedfe;border-left-color:#7f77dd!important}.t-purple .metric-label{color:#3c3489}
+.t-teal{background:#e1f5ee;border-left-color:#1d9e75!important}.t-teal .metric-label{color:#085041}
+.t-coral{background:#faece7;border-left-color:#d85a30!important}.t-coral .metric-label{color:#712b13}
+.t-pink{background:#fbeaf0;border-left-color:#d4537e!important}.t-pink .metric-label{color:#72243e}
+/* hover explanations: data-tip on a card or a metric tile */
+#overview-ov-fund [data-tip]{position:relative}
+#overview-ov-fund [data-tip]:hover{z-index:20}
+#overview-ov-fund [data-tip]::after{content:attr(data-tip);position:absolute;top:calc(100% - 4px);left:10px;width:max-content;max-width:270px;background:#1a1a18;color:#fff;font-size:12.5px;font-weight:400;line-height:1.5;text-transform:none;letter-spacing:0;white-space:normal;text-align:left;padding:9px 12px;border-radius:8px;box-shadow:0 4px 14px rgba(0,0,0,.28);opacity:0;visibility:hidden;pointer-events:none;transition:opacity .15s ease .25s;z-index:30}
+#overview-ov-fund [data-tip]:hover::after{opacity:1;visibility:visible}
+#overview-ov-fund .metrics>.metric:last-child::after{left:auto;right:10px}
+/* a card's own explanation follows the cursor, and steps aside while a tile or a chart is hovered */
+#overview-ov-fund .ov-tip-card::after{top:var(--ty,42px);left:clamp(8px,var(--tx,16px),calc(100% - 290px));max-width:280px}
+#overview-ov-fund .ov-tip-card:has(.metric:hover)::after,#overview-ov-fund .ov-tip-card:has(canvas:hover)::after,#overview-ov-fund .ov-tip-card:has(select:hover)::after{opacity:0;visibility:hidden}
+@media(max-width:880px){#overview-ov-fund .metric{min-width:47%}#overview-ov-fund .card{padding:14px}}
+@media(max-width:640px){#overview-ov-fund .metric{min-width:100%}#overview-ov-fund .metric-val{font-size:20px}}
 </style>
 </head>
 <body>
@@ -829,49 +864,46 @@ tr:last-child td{border-bottom:none}
 
   <!-- Sub-panel: Fund Summary -->
   <div id="overview-ov-fund" class="overview-sub">
-    <div class="card">
+    <div class="card ov-c-blue ov-tip-card" data-tip="A one-glance summary of the fund: how much members have put in, what it is worth today, the units in issue and the cash on hand.">
       <div class="card-title">Fund snapshot</div>
       <div class="metrics">
-        <div class="metric"><div class="metric-label">Net invested (cost basis)</div><div class="metric-val" id="m-total">&#8358;0</div><div class="metric-sub">Total subscriptions minus withdrawals</div></div>
-        <div class="metric"><div class="metric-label">Fund value at NAV</div><div class="metric-val" id="m-fund-value" style="color:#0c447c">&#8358;0</div><div class="metric-sub">Net units &times; current NAV</div></div>
-        <div class="metric"><div class="metric-label">Unrealised gain / loss</div><div class="metric-val" id="m-unrealised">&#8358;0</div><div class="metric-sub">Fund value &minus; cost basis</div></div>
+        <div class="metric t-blue" data-tip="Total cash members have paid in (all subscriptions) less everything paid back out in redemptions. This is the members' combined cost basis."><div class="metric-label">Net invested (cost basis)</div><div class="metric-val" id="m-total">&#8358;0</div><div class="metric-sub">Total subscriptions minus withdrawals</div></div>
+        <div class="metric t-green" data-tip="What the fund's units are worth today: net units outstanding multiplied by the latest NAV per unit."><div class="metric-label">Fund value at NAV</div><div class="metric-val" id="m-fund-value" style="color:#0c447c">&#8358;0</div><div class="metric-sub">Net units &times; current NAV</div></div>
+        <div class="metric t-amber" data-tip="Paper profit or loss: fund value at NAV minus net invested. It only becomes real money when members redeem."><div class="metric-label">Unrealised gain / loss</div><div class="metric-val" id="m-unrealised">&#8358;0</div><div class="metric-sub">Fund value &minus; cost basis</div></div>
       </div>
       <div class="metrics">
-        <div class="metric"><div class="metric-label">Net units outstanding</div><div class="metric-val" id="m-units">0</div></div>
-        <div class="metric"><div class="metric-label">NAV / unit</div><div class="metric-val" id="m-nav">&#8358;1,000</div></div>
-        <div class="metric"><div class="metric-label">Cash available</div><div class="metric-val" id="m-cash">&#8358;0</div><div class="metric-sub">Net invested &minus; total purchases</div></div>
-        <div class="metric"><div class="metric-label">Active members</div><div class="metric-val" id="m-members">0</div><div class="metric-sub">Members with units &gt; 0</div></div>
+        <div class="metric t-purple" data-tip="Total units held by all members after subscriptions, redemptions and transfers. Transactions still awaiting a valuation are not counted yet."><div class="metric-label">Net units outstanding</div><div class="metric-val" id="m-units">0</div></div>
+        <div class="metric t-teal" data-tip="The price of one fund unit at the latest valuation (portfolio value &divide; units outstanding). New subscriptions and redemptions are priced from it."><div class="metric-label">NAV / unit</div><div class="metric-val" id="m-nav">&#8358;1,000</div></div>
+        <div class="metric t-coral" data-tip="Estimated uninvested cash: net invested less everything spent on purchases, including broker fees."><div class="metric-label">Cash available</div><div class="metric-val" id="m-cash">&#8358;0</div><div class="metric-sub">Net invested &minus; total purchases</div></div>
+        <div class="metric t-pink" data-tip="Members who currently hold units. A red note shows how many of them are worth less than they paid in (underwater)."><div class="metric-label">Active members</div><div class="metric-val" id="m-members">0</div><div class="metric-sub">Members with units &gt; 0</div></div>
       </div>
     </div>
-    <div class="card">
+    <div class="card ov-c-green ov-tip-card" data-tip="How the unit price (NAV) has moved from the day the fund launched to the latest valuation.">
       <div class="card-title">NAV performance</div>
       <div class="metrics">
-        <div class="metric"><div class="metric-label">Initial NAV / unit</div><div class="metric-val" id="ov-init-nav">&#8358;0</div><div class="metric-sub">At fund launch</div></div>
-        <div class="metric"><div class="metric-label">Current NAV / unit</div><div class="metric-val" id="ov-curr-nav" style="color:#0c447c">&#8358;0</div><div class="metric-sub">Latest valuation</div></div>
-        <div class="metric"><div class="metric-label">NAV change</div><div class="metric-val" id="ov-nav-change">—</div><div class="metric-sub" id="ov-nav-change-sub">Since launch</div></div>
-        <div class="metric"><div class="metric-label">Valuations recorded</div><div class="metric-val" id="ov-rounds">0</div></div>
+        <div class="metric t-purple" data-tip="The unit price when the fund launched. Every 'since launch' figure is measured against this."><div class="metric-label">Initial NAV / unit</div><div class="metric-val" id="ov-init-nav">&#8358;0</div><div class="metric-sub">At fund launch</div></div>
+        <div class="metric t-blue" data-tip="The unit price from the most recent portfolio valuation."><div class="metric-label">Current NAV / unit</div><div class="metric-val" id="ov-curr-nav" style="color:#0c447c">&#8358;0</div><div class="metric-sub">Latest valuation</div></div>
+        <div class="metric t-green" data-tip="How far the unit price has moved since launch, in currency and as a percentage. Green is growth, red is a fall."><div class="metric-label">NAV change</div><div class="metric-val" id="ov-nav-change">—</div><div class="metric-sub" id="ov-nav-change-sub">Since launch</div></div>
+        <div class="metric t-amber" data-tip="How many portfolio valuations have been recorded. Each one sets a new NAV."><div class="metric-label">Valuations recorded</div><div class="metric-val" id="ov-rounds">0</div></div>
       </div>
     </div>
-    <div class="card">
-      <div class="card-title">Fund performance charts</div>
-      <div class="chart-grid-2">
-        <div>
-          <div style="font-size:12px;font-weight:500;color:#5f5e5a;margin-bottom:4px">Cumulative investment over time</div>
-          <div class="chart-wrap"><canvas id="chart-cumulative"></canvas></div>
-        </div>
-        <div>
-          <div style="font-size:12px;font-weight:500;color:#5f5e5a;margin-bottom:4px">Member share breakdown</div>
-          <div class="chart-wrap"><canvas id="chart-share"></canvas></div>
-        </div>
+    <div class="chart-grid-2">
+      <div class="card ov-c-purple ov-tip-card" data-tip="Running total of all member subscriptions over time (before any redemptions). Shows how the fund's capital has grown through contributions.">
+        <div class="card-title">Cumulative investment over time</div>
+        <div class="chart-wrap"><canvas id="chart-cumulative"></canvas></div>
       </div>
-      <div style="margin-top:16px">
-        <div style="font-size:12px;font-weight:500;color:#5f5e5a;margin-bottom:4px">NAV per unit over time</div>
-        <div class="chart-wrap"><canvas id="chart-nav"></canvas></div>
+      <div class="card ov-c-teal ov-tip-card" data-tip="How the fund is split between members, based on each member's net amount invested. Hover a slice to see the exact figure.">
+        <div class="card-title">Member share breakdown</div>
+        <div class="chart-wrap"><canvas id="chart-share"></canvas></div>
       </div>
     </div>
-    <div class="card" id="ov-perf-card" style="background:#fffdf7;border-color:#e8d48a">
+    <div class="card ov-c-amber ov-tip-card" data-tip="The unit price (NAV) at launch and after each valuation. A rising line means the fund's investments are gaining value.">
+      <div class="card-title">NAV per unit over time</div>
+      <div class="chart-wrap"><canvas id="chart-nav"></canvas></div>
+    </div>
+    <div class="card ov-c-coral ov-tip-card" id="ov-perf-card" data-tip="A plain-language read of how the fund stands as of its last valuation, with possible growth and downside scenarios drawn from the fund's own history.">
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px">
-        <div class="card-title" style="margin-bottom:0;color:#633806">Performance explanation &amp; outlook</div>
+        <div class="card-title" style="margin-bottom:0">Performance explanation &amp; outlook</div>
         <div style="display:flex;align-items:center;gap:6px">
           <label style="margin:0;font-size:12px">Outlook horizon</label>
           <select id="ovp-horizon" onchange="renderFundPerformanceExplanation()" style="width:auto;font-size:12px;padding:5px 8px">
@@ -1927,17 +1959,31 @@ function profileToCloudDoc(p){
     role:p.role,linkedMemberName:p.linkedMemberName||null,active:p.active!==false,
     createdAt:p.createdAt||new Date().toISOString()};
 }
-async function pushUserProfile(profile){
+/* v3.32.3 — returns true on success, false on failure. Unless `silent`, a failure now shows an
+   alert instead of only a console.warn: a profile that never reaches funds/{fundId}/members is
+   wiped from the local cache on the next cloud pull, and the user then can't log in. */
+async function pushUserProfile(profile,silent){
   const col=fundMembersCollection();
-  if(!col) return; // no fund connected yet — profile stays local-only until one is
-  try{ await ensureSignedIn(); await col.doc(profile.uid).set(profileToCloudDoc(profile)); }
-  catch(e){ console.warn('Profile push failed:',e.message); }
+  if(!col){
+    if(!silent) alert('This device is not connected to a fund (no Fund ID), so the profile for "'+profile.username+'" was saved on this device only and will NOT sync. Connect a Fund ID under Settings \u2192 Data Storage, then use "Push local \u2192 cloud".');
+    return false;
+  }
+  try{ await ensureSignedIn(); await col.doc(profile.uid).set(profileToCloudDoc(profile)); return true; }
+  catch(e){
+    console.warn('Profile push failed:',e.message);
+    if(!silent) alert('Could not save the profile for "'+profile.username+'" to the cloud: '+e.message+'\n\nUntil this succeeds they will not be able to log in, and the next cloud pull will drop them. Check that you are logged in as an Admin whose member record exists in Firestore, then try again.');
+    return false;
+  }
 }
 async function deleteUserProfileCloud(uid){
   const col=fundMembersCollection();
-  if(!col) return;
-  try{ await ensureSignedIn(); await col.doc(uid).delete(); }
-  catch(e){ console.warn('Profile delete failed:',e.message); }
+  if(!col) return true;
+  try{ await ensureSignedIn(); await col.doc(uid).delete(); return true; }
+  catch(e){
+    console.warn('Profile delete failed:',e.message);
+    alert('The user was removed on this device, but deleting their profile from the cloud failed: '+e.message+'\n\nThey may reappear on the next cloud pull. Delete their document under funds/{fundId}/members in the Firebase console if so.');
+    return false;
+  }
 }
 async function fetchCloudProfile(uid){
   const col=fundMembersCollection();
@@ -1952,7 +1998,10 @@ async function pushAllUserProfiles(){
   if(!col) return;
   loadUsers();
   const migrated=users.filter(u=>u.uid); // legacy (unmigrated) hash-based entries can't be pushed — no uid yet
-  for(const p of migrated){ await pushUserProfile(p); }
+  let failed=0;
+  for(const p of migrated){ if(!(await pushUserProfile(p,true))) failed++; }
+  if(failed) console.warn('Profile push: '+failed+' of '+migrated.length+' profile(s) failed to sync.');
+  return failed;
 }
 /* Pulls every member doc from funds/{fundId}/members and merges it into local `users`
    (cloud copy wins per-uid, since Admin actions in Settings are the source of truth for
@@ -2849,6 +2898,22 @@ async function removeUser(uid){
   await deleteUserProfileCloud(uid);
   renderUsersTable();
 }
+/* v3.32.3 — legacy (pre-v3.27.0, no Firebase uid) accounts had no controls at all. They only exist in
+   this device's local cache (they can't have a cloud profile without a uid), so removal is local-only. */
+function removeLegacyUser(username){
+  const idx=users.findIndex(u=>!u.uid&&u.username===username);
+  if(idx===-1)return;
+  const u=users[idx];
+  if(u.role==='Admin'){
+    const otherActiveAdmins=users.filter((x,i)=>i!==idx&&x.role==='Admin'&&x.active!==false&&x.uid);
+    if(!otherActiveAdmins.length){alert('Cannot delete — this is the last Admin with a working login. Create or fix another Admin first.');return;}
+  }
+  if(!confirm('Remove the legacy account "'+u.username+'"? It was never migrated to Firebase, so it only exists on this device. This cannot be undone.'))return;
+  users.splice(idx,1);
+  saveUsers();
+  renderUsersTable();
+  setStatus('Legacy user "'+u.username+'" removed.');
+}
 const ROLE_COLORS={Admin:'tag-purple',Manager:'tag-blue',Member:'tag-green'};
 function renderUsersTable(){
   syncLinkedMemberDropdown();
@@ -2876,7 +2941,7 @@ function renderUsersTable(){
       <td>${isActive?'<span style="color:#3b6d11;font-size:12px">&#9679; Active</span>':'<span style="color:#a32d2d;font-size:12px">&#9679; Inactive</span>'}</td>
       <td style="font-size:11px;color:#888780">${u.createdAt?u.createdAt.split('T')[0]:'—'}</td>
       <td onclick="event.stopPropagation()">
-        ${isLegacy?'<span style="font-size:11px;color:#888780">Upgrades automatically next time they log in</span>':`
+        ${isLegacy?`<div style="display:flex;gap:6px;align-items:center"><span style="font-size:11px;color:#888780">Upgrades on next login</span><button class="btn-danger" onclick="removeLegacyUser('${(u.username||'').replace(/'/g,"\\'")}')" style="padding:3px 7px;font-size:11px" title="Remove">&#128465;</button></div>`:`
         <div style="display:flex;gap:4px">
           <button onclick="toggleUserActive('${u.uid}')" style="padding:3px 8px;font-size:11px" title="${isActive?'Deactivate':'Activate'}">${isActive?'⏸ Deactivate':'▶ Activate'}</button>
           <button class="btn-danger" onclick="removeUser('${u.uid}')" style="padding:3px 7px;font-size:11px" title="Remove">&#128465;</button>
@@ -9846,6 +9911,23 @@ function resetProjectionSettings(){
   if(!confirm('Reset all projection assumptions to the built-in defaults?'))return;
   projectionAssumptions=null;save();renderProjectionSettings();
 }
+
+/* ══════════════════════════════════════════
+   OVERVIEW HOVER EXPLANATIONS (v3.32.4)
+   The tooltip text itself lives in each element's data-tip attribute and is drawn by CSS;
+   this only tells a card where the cursor is so its explanation appears beside it.
+══════════════════════════════════════════ */
+(function(){
+  const root=document.getElementById('overview-ov-fund');
+  if(!root) return;
+  root.addEventListener('mousemove',function(e){
+    const card=e.target.closest&&e.target.closest('.ov-tip-card');
+    if(!card) return;
+    const r=card.getBoundingClientRect();
+    card.style.setProperty('--tx',(e.clientX-r.left+14)+'px');
+    card.style.setProperty('--ty',(e.clientY-r.top+18)+'px');
+  });
+})();
 
 const CONTRIBUTIONS_TABS=new Set(['deposits','withdrawals','transfers']);
 const PORTFOLIO_TABS=new Set(['profit','port-register','port-purchases','port-sales','port-income','port-pnl','port-allocation','stocks-holdings','stocks-transactions','stocks-dividends','fixed-income']);
