@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Like Minds Reimagined — v3.32.4</title>
+<title>Like Minds Reimagined — v3.33.0</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
@@ -210,7 +210,7 @@ tr:last-child td{border-bottom:none}
       <div style="font-size:12px;color:#c9a227;margin-top:6px;font-weight:600">Set up the first Admin account</div>
     </div>
     <div style="font-size:12px;color:#5f5e5a;line-height:1.6;margin-bottom:16px">
-      No user accounts exist yet on this device. Create the Admin account that will manage fund access and user roles.
+      Use this only to start a <strong>brand-new fund</strong>. If your fund already exists, go back and log in with your existing account &mdash; no Fund ID is needed.
     </div>
     <div style="display:flex;gap:6px;margin-bottom:14px" id="setup-mode-toggle">
       <button type="button" id="setup-mode-btn-username" onclick="setAuthSetupMode('username')" style="flex:1;padding:7px;font-size:12px;background:#1a1a18;color:#fff;border-color:#1a1a18">Username</button>
@@ -226,13 +226,7 @@ tr:last-child td{border-bottom:none}
     <div id="setup-error" style="color:#a32d2d;font-size:12px;margin-bottom:10px"></div>
     <button class="btn-primary" style="width:100%;padding:10px" onclick="createFirstAdmin()">Create Admin account &amp; continue</button>
     <div style="text-align:center;margin-top:16px">
-      <a href="#" onclick="toggleConnectExistingFund(event)" style="font-size:12px;color:#378add;text-decoration:none">Already have a fund on another device? Connect with your Fund ID</a>
-    </div>
-    <div id="setup-connect-existing" style="display:none;margin-top:14px;border-top:0.5px solid #d3d1c7;padding-top:14px">
-      <label>Fund ID</label>
-      <input id="setup-sync-code" type="text" placeholder="Ask your fund administrator for your Fund ID" onkeydown="if(event.key==='Enter')connectToExistingFund()"/>
-      <div id="setup-sync-error" style="font-size:12px;margin:8px 0"></div>
-      <button style="width:100%;padding:9px" onclick="connectToExistingFund()">Save &amp; continue to login</button>
+      <a href="#" onclick="showLoginScreen(event)" style="font-size:12px;color:#378add;text-decoration:none">&larr; My fund already exists &mdash; back to login</a>
     </div>
   </div>
 </div>
@@ -252,6 +246,9 @@ tr:last-child td{border-bottom:none}
     <div style="margin-bottom:16px"><label>Password</label><div class="pw-wrap"><input id="login-password" type="password" onkeydown="if(event.key==='Enter')attemptLogin()"/><button type="button" class="pw-toggle" onclick="togglePasswordVisibility(this)" aria-label="Show password" title="Show password" tabindex="-1"><svg class="pw-eye-on" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg><svg class="pw-eye-off" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg></button></div></div>
     <div id="login-error" style="color:#a32d2d;font-size:12px;margin-bottom:10px"></div>
     <button class="btn-primary" style="width:100%;padding:10px" onclick="attemptLogin()">Log in</button>
+    <div id="login-new-fund-wrap" style="display:none;text-align:center;margin-top:16px">
+      <a href="#" onclick="showSetupScreen(event)" style="font-size:12px;color:#378add;text-decoration:none">First time here? Create a new fund</a>
+    </div>
   </div>
 </div>
 
@@ -712,19 +709,10 @@ tr:last-child td{border-bottom:none}
     <div class="card">
       <div class="card-title">Fund Sync</div>
       <div style="font-size:13px;color:#5f5e5a;line-height:1.6;margin-bottom:14px">
-        Your Fund ID connects this device to your fund's cloud data. It is <strong>not a secret</strong> — access is
-        controlled by your Firebase login and your fund membership (set by an Admin in Users &amp; Access), not by
-        this ID. Once connected, changes save to the cloud automatically while you're online; if you go offline,
-        changes are held locally and sync automatically once you reconnect.
-      </div>
-      <div class="row">
-        <div class="f2">
-          <label>Fund ID</label>
-          <input id="lmr-sync-code-input" type="text" placeholder="Paste a Fund ID to connect this device"/>
-        </div>
-        <div style="flex:0;display:flex;gap:6px;align-items:flex-end">
-          <button class="btn-primary" onclick="connectFundId()">Connect</button>
-        </div>
+        This device finds your fund automatically when you log in &mdash; no Fund ID needs to be typed. Access is
+        controlled by your Firebase login and your fund membership (set by an Admin in Users &amp; Access).
+        Changes save to the cloud automatically while you're online; if you go offline, they are held locally and
+        sync once you reconnect.
       </div>
       <div id="lmr-fund-id-display" style="margin-top:8px;font-size:11px;color:#888780;font-family:monospace"></div>
       <div id="lmr-sync-status" style="margin-top:8px"></div>
@@ -1847,7 +1835,7 @@ let allocationHistory=[]; // [{id, date, action:'set'|'updated'|'removed', asset
    login-account profiles. Access is governed entirely by Firestore Security
    Rules checking the caller's real Firebase Auth uid against that members
    subcollection — fundId itself is a plain, non-secret lookup key, not a
-   password; see connectFundId()/connectToExistingFund().
+   password; see resolveFundIdForUser().
    `appBooted` tracks whether bootApp() has already rendered the shell, so
    pullFromCloud() knows whether to just write localStorage (pre-boot) or
    also refresh in-memory state + the visible UI (mid-session pull).
@@ -2038,7 +2026,7 @@ function fundMembersCollection(){
 function renderFundIdDisplay(){
   const el=document.getElementById('lmr-fund-id-display');
   if(!el) return;
-  el.textContent=fundId?('Fund ID: '+fundId):'Not connected to a fund yet.';
+  el.textContent=fundId?('Connected fund (reference only): '+fundId):'Not connected to a fund yet.';
 }
 
 async function pushToCloud(){
@@ -2165,63 +2153,50 @@ function renderSyncPanel(){
   }
 }
 
-/* Setting/changing the sync code from within Settings (post-login). Because
-   user accounts are now part of the synced payload, connecting to a code
-   that already has cloud data will REPLACE this device's local users —
-   explicitly confirmed here rather than silently overwritten, since that's
-   a materially bigger risk than overwriting fund figures alone. */
-async function connectFundId(){
-  const val=document.getElementById('lmr-sync-code-input').value.trim();
-  if(!val){alert('Enter a Fund ID.');return;}
-  if(!navigator.onLine){alert('You appear to be offline. Connect to the internet to connect to a fund.');return;}
-  if(!currentUser){alert('Log in first, then connect this device to your fund by its Fund ID.');return;}
-  const prevFundId=fundId;
-  fundId=val;
-  localStorage.setItem('lmr_fund_id', fundId);
-  renderSyncPanel();
-  renderSyncStatus('Connecting…');
-  try{
-    await ensureSignedIn();
-    const docSnap=await fundDataDoc().get();
-    if(!docSnap.exists){ throw new Error('No fund found with that ID.'); }
-    await pullFromCloud();
-  }catch(e){
-    // Roll back — don't leave the device pointed at a fund it can't reach.
-    fundId=prevFundId;
-    if(fundId) localStorage.setItem('lmr_fund_id', fundId); else localStorage.removeItem('lmr_fund_id');
-    renderSyncPanel();
-    renderSyncStatus('&#10007; Could not connect — '+e.message+'. Check the Fund ID, or ask your fund administrator to add you as a member first.', true);
-  }
+/* v3.33.0 — FUND LOOKUP FROM LOGIN. A user no longer types a Fund ID: after Firebase sign-in the app
+   asks Firestore for the members/{uid} doc whose `uid` field equals the signed-in user, across every
+   fund (collection-group query), and takes the fundId from that doc's path
+   (funds/{fundId}/members/{uid}). Needs the own-doc read rule + the `uid` collection-group index
+   described in firestore_rules_v3_33_0_addition.md. Returns null if the user belongs to no fund. */
+async function resolveFundIdForUser(uid){
+  if(!fbDb) throw new Error('Firebase not initialized');
+  const snap=await fbDb.collectionGroup('members').where('uid','==',uid).get();
+  const found=[];
+  snap.forEach(d=>{
+    const fundDoc=d.ref.parent.parent;
+    if(fundDoc&&fundDoc.parent&&fundDoc.parent.id==='funds') found.push({fundId:fundDoc.id,active:d.data().active!==false});
+  });
+  if(!found.length) return null;
+  return (found.find(x=>x.active)||found[0]).fundId;
 }
+/* Points this device at a fund. If it was previously tied to a DIFFERENT fund (another person on a
+   shared browser), the old fund's cached data is dropped so it is never pushed into the new one. */
+function adoptFundId(newId){
+  if(fundId&&fundId!==newId){
+    localStorage.removeItem(LS_KEY);
+    ['lmr_pending_sync','lmr_local_version','lmr_last_synced'].forEach(k=>localStorage.removeItem(k));
+  }
+  fundId=newId;
+  localStorage.setItem('lmr_fund_id',newId);
+}
+/* "Disconnect" now forgets this device's fund and logs out; the next login re-detects the fund. */
 function disconnectFund(){
-  if(!confirm("Disconnect this device from its fund? Local data and user accounts stay as they are — this device just stops syncing until a Fund ID is entered again."))return;
+  if(!confirm("Disconnect this device from its fund? You will be logged out, and the device will reconnect automatically the next time you log in. Local data is kept until then."))return;
   localStorage.removeItem('lmr_fund_id');
   fundId=null;
-  const input=document.getElementById('lmr-sync-code-input'); if(input) input.value='';
-  renderSyncPanel();
+  logout();
+}
+function showSetupScreen(e){
+  if(e)e.preventDefault();
+  document.getElementById('auth-login').style.display='none';
+  document.getElementById('auth-setup').style.display='flex';
+}
+function showLoginScreen(e){
+  if(e)e.preventDefault();
+  document.getElementById('auth-setup').style.display='none';
+  document.getElementById('auth-login').style.display='flex';
 }
 
-/* Pre-login "Connect to an existing fund" flow, offered on the first-run
-   Admin-setup screen (shown when this device has zero local users). Lets a
-   brand-new device pull an existing cloud fund — including its users — so
-   the person logs in with their existing account instead of creating a
-   duplicate local admin for what's really the same fund. */
-function connectToExistingFund(){
-  const id=document.getElementById('setup-sync-code').value.trim();
-  const errEl=document.getElementById('setup-sync-error');
-  errEl.style.color='#5f5e5a';
-  if(!id){errEl.textContent='Enter the Fund ID.';errEl.style.color='#a32d2d';return;}
-  fundId=id;
-  localStorage.setItem('lmr_fund_id',id);
-  errEl.style.color='#27500a';
-  errEl.textContent='Saved. Log in with the username/email and password your fund administrator gave you.';
-  setTimeout(()=>{ bootApp(); },600);
-}
-function toggleConnectExistingFund(e){
-  if(e)e.preventDefault();
-  const el=document.getElementById('setup-connect-existing');
-  if(el) el.style.display=el.style.display==='none'?'block':'none';
-}
 
 /* ══════════════════════════════════════════
    AUTHENTICATION & ACCESS CONTROL
@@ -2550,8 +2525,23 @@ async function attemptLogin(){
       }
     }
     if(!profile){
-      loadUsers();
       const uid=cred.user.uid;
+      errEl.textContent='Finding your fund…';
+      let noFundMsg=null;
+      try{
+        const foundFund=await resolveFundIdForUser(uid);
+        if(foundFund) adoptFundId(foundFund);
+        else if(!fundId) noFundMsg='You are signed in, but this account is not linked to any fund yet. Ask your fund administrator to add you under Settings → Users & Access.';
+      }catch(lookupErr){
+        console.warn('Fund lookup failed:',lookupErr.message);
+        if(!fundId) noFundMsg='Could not find your fund: '+lookupErr.message;
+      }
+      if(noFundMsg){
+        errEl.style.color='#a32d2d';errEl.textContent=noFundMsg;
+        try{await fbAuth.signOut();}catch(e){}
+        return;
+      }
+      loadUsers();
       profile=users.find(u=>u.uid===uid);
       if(!profile){ profile=await fetchCloudProfile(uid); if(profile){ users.push(profile); saveUsersLocalOnly(); } }
     }
@@ -2598,11 +2588,11 @@ function bootApp(){
     if(!u||u.active===false){currentUser=null;sessionStorage.removeItem('lmr_session');}
   }
 
-  if(!users.length && !fundId){
-    document.getElementById('auth-setup').style.display='flex';
-    return;
-  }
   if(!currentUser){
+    // v3.33.0: login is always the entry point. "Create a new fund" is only offered on a device
+    // that isn't already tied to a fund.
+    const nf=document.getElementById('login-new-fund-wrap');
+    if(nf) nf.style.display=fundId?'none':'block';
     document.getElementById('auth-login').style.display='flex';
     return;
   }
