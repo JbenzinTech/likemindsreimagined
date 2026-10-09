@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Like Minds Reimagined — v3.33.0</title>
+<title>Like Minds Reimagined — v3.35.0</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
@@ -246,9 +246,26 @@ tr:last-child td{border-bottom:none}
     <div style="margin-bottom:16px"><label>Password</label><div class="pw-wrap"><input id="login-password" type="password" onkeydown="if(event.key==='Enter')attemptLogin()"/><button type="button" class="pw-toggle" onclick="togglePasswordVisibility(this)" aria-label="Show password" title="Show password" tabindex="-1"><svg class="pw-eye-on" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg><svg class="pw-eye-off" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg></button></div></div>
     <div id="login-error" style="color:#a32d2d;font-size:12px;margin-bottom:10px"></div>
     <button class="btn-primary" style="width:100%;padding:10px" onclick="attemptLogin()">Log in</button>
+    <div style="text-align:center;margin-top:12px"><a href="#" onclick="forgotPassword(event)" style="font-size:12px;color:#378add;text-decoration:none">Forgot password?</a></div>
     <div id="login-new-fund-wrap" style="display:none;text-align:center;margin-top:16px">
       <a href="#" onclick="showSetupScreen(event)" style="font-size:12px;color:#378add;text-decoration:none">First time here? Create a new fund</a>
     </div>
+  </div>
+</div>
+
+<!-- ── AUTH: Change password (forced at first login, or voluntary) ── -->
+<div id="auth-changepw" style="display:none;position:fixed;inset:0;z-index:200;overflow:auto;align-items:center;justify-content:center;background:linear-gradient(135deg,#1a1a18 0%,#2e2b22 60%,#3a3020 100%);padding:20px">
+  <div style="background:#fff;border-radius:14px;padding:32px;max-width:380px;width:100%">
+    <div style="text-align:center;margin-bottom:18px">
+      <div style="font-size:18px;font-weight:700;letter-spacing:.04em;text-transform:uppercase">Change password</div>
+      <div id="changepw-intro" style="font-size:12px;color:#5f5e5a;margin-top:8px;line-height:1.6"></div>
+    </div>
+    <div id="changepw-current-row" style="margin-bottom:12px"><label>Current password</label><input id="changepw-current" type="password" autocomplete="current-password"/></div>
+    <div style="margin-bottom:12px"><label>New password</label><input id="changepw-new" type="password" placeholder="At least 6 characters" autocomplete="new-password"/></div>
+    <div style="margin-bottom:16px"><label>Confirm new password</label><input id="changepw-new2" type="password" autocomplete="new-password" onkeydown="if(event.key==='Enter')submitPasswordChange()"/></div>
+    <div id="changepw-error" style="font-size:12px;margin-bottom:10px;color:#a32d2d"></div>
+    <button class="btn-primary" style="width:100%;padding:10px" onclick="submitPasswordChange()">Save new password</button>
+    <div style="text-align:center;margin-top:14px"><a href="#" id="changepw-cancel" onclick="cancelPasswordChange(event)" style="font-size:12px;color:#378add;text-decoration:none">Cancel</a></div>
   </div>
 </div>
 
@@ -259,6 +276,7 @@ tr:last-child td{border-bottom:none}
     <div class="hero-sub">— My Account —</div>
     <div class="hero-actions">
       <span class="hbtn" style="cursor:default" id="portal-user-label">Logged in</span>
+      <button class="hbtn" onclick="showChangePassword('voluntary')">Change password</button>
       <button class="hbtn danger" onclick="logout()">Log out</button>
     </div>
   </div>
@@ -277,6 +295,7 @@ tr:last-child td{border-bottom:none}
   <div class="hero-sub">— Let's Build Wealth Together —</div>
   <div class="hero-actions">
     <span class="hbtn" style="cursor:default" id="app-user-label">Logged in</span>
+    <button class="hbtn" onclick="showChangePassword('voluntary')">Change password</button>
     <button class="hbtn danger" onclick="logout()">Log out</button>
   </div>
 </div>
@@ -604,7 +623,7 @@ tr:last-child td{border-bottom:none}
       <div style="font-size:12px;color:#5f5e5a;line-height:1.6;margin-bottom:12px">
         Build a custom role with exactly the access it needs. Tick each section a user with this role should be able to see and use.
         The built-in <strong>Admin</strong> and <strong>Manager</strong> roles cannot be edited. <strong>Member</strong> is a separate view-only
-        portal for a single member's own statement and isn't part of this permission grid.
+        portal for a single member's own statement and isn't part of this permission grid — use the Member portal access card below to choose what Members see.
       </div>
       <div class="row">
         <div class="f15"><label>Role name</label><input id="role-name" type="text" placeholder="e.g. Accountant"/></div>
@@ -619,6 +638,7 @@ tr:last-child td{border-bottom:none}
       <div class="card-title">Roles <span style="font-weight:400;text-transform:none;letter-spacing:0;font-size:11px;color:#888780">&mdash; built-in roles cannot be edited or removed</span></div>
       <div id="roles-table-wrap"><div class="empty">No custom roles yet.</div></div>
     </div>
+    <div id="member-portal-settings-wrap"></div>
   </div>
 
   <!-- Sub-panel: Users & Access -->
@@ -634,8 +654,8 @@ tr:last-child td{border-bottom:none}
         <strong>Manager</strong> — day-to-day operations (deposits, withdrawals, portfolio, valuation, accounting). No access to Settings or KYC.<br>
         <strong>Member</strong> — view-only access to their own account statement. Cannot see other members or any fund-wide data.
       </div>
-      <div style="display:flex;gap:6px;margin-bottom:10px;max-width:260px" id="user-mode-toggle">
-        <button type="button" id="user-mode-btn-username" onclick="setUserFormAuthMode('username')" style="flex:1;padding:6px;font-size:12px;background:#1a1a18;color:#fff;border-color:#1a1a18">Username</button>
+      <div style="display:none" id="user-mode-toggle">
+        <button type="button" id="user-mode-btn-username" onclick="setUserFormAuthMode('email')" style="flex:1;padding:6px;font-size:12px;background:#1a1a18;color:#fff;border-color:#1a1a18">Username</button>
         <button type="button" id="user-mode-btn-email" onclick="setUserFormAuthMode('email')" style="flex:1;padding:6px;font-size:12px">Email</button>
       </div>
       <div class="row">
@@ -662,7 +682,7 @@ tr:last-child td{border-bottom:none}
         </div>
       </div>
       <div id="user-edit-note" style="display:none;font-size:11px;color:#633806;background:#fdf6e3;border:0.5px solid #f0d98a;border-radius:6px;padding:8px 10px;margin-top:8px">
-        Username/email and password can't be changed from here yet — that requires a server-side step (Cloud Functions) not built yet. To give someone a new password today, remove this account and add them again.
+        Login email and password can't be changed from here — that needs a server-side step (Cloud Functions) not built yet. Users can change their own password from the header, or use \"Forgot password?\" on the login screen.
       </div>
     </div>
     <div class="card">
@@ -1905,7 +1925,7 @@ function gatherSyncPayload(){
     allocationTargets,allocationHistory,stockHoldings,stockTxns,stockDividends,
     settings:{fundName:document.getElementById('fund-name').value,currency:getCurrency(),
       nav:document.getElementById('init-nav').value,startDate:document.getElementById('fund-start').value},
-    projectionAssumptions:projectionAssumptions||null,customRoles,
+    projectionAssumptions:projectionAssumptions||null,customRoles,memberPortal:memberPortalSettings||null,
     updatedAt:Date.now()
   };
 }
@@ -1932,7 +1952,7 @@ function writeCloudDataToLocalStorage(d){
   // read whatever's currently cached locally so we don't wipe profiles pulled a moment ago.
   let existingUsers=[];
   try{ const raw=localStorage.getItem(USERS_KEY); if(raw){ const p=JSON.parse(raw); existingUsers=Array.isArray(p)?p:(p.users||[]); } }catch(e){}
-  localStorage.setItem(USERS_KEY,JSON.stringify({users:existingUsers,customRoles:d.customRoles||[]}));
+  localStorage.setItem(USERS_KEY,JSON.stringify({users:existingUsers,customRoles:d.customRoles||[],memberPortal:d.memberPortal||null}));
 }
 
 /* ══════════════════════════════════════════
@@ -1944,7 +1964,7 @@ function profileToCloudDoc(p){
   // Explicit allow-list — guarantees nothing credential-shaped ever reaches Firestore,
   // even if a legacy in-memory object still happens to carry a passwordHash field.
   return {uid:p.uid,username:p.username,email:p.email||null,authMode:p.authMode||'username',
-    role:p.role,linkedMemberName:p.linkedMemberName||null,active:p.active!==false,
+    role:p.role,linkedMemberName:p.linkedMemberName||null,active:p.active!==false,mustChangePassword:p.mustChangePassword===true,
     createdAt:p.createdAt||new Date().toISOString()};
 }
 /* v3.32.3 — returns true on success, false on failure. Unless `silent`, a failure now shows an
@@ -2211,6 +2231,7 @@ const USERS_KEY='inv_club_v2_users';
    successful login. */
 let users=[]; // [{uid,username,email,authMode,role,linkedMemberName,active,createdAt}]
 let currentUser=null; // {uid,username,role,linkedMemberName}
+let memberPortalSettings=null; // v3.35.0 — which Member-portal sections Members see; null = all on
 let customRoles=[]; // [{id,name,permissions:{overview,contributions,portfolio,accounting,members,kyc,settings,users},builtin:false}]
 
 const PERMISSION_DEFS=[
@@ -2329,13 +2350,13 @@ async function hashPassword(pw){
   return [...new Uint8Array(buf)].map(b=>b.toString(16).padStart(2,'0')).join('');
 }
 function saveUsers(){
-  try{localStorage.setItem(USERS_KEY,JSON.stringify({users,customRoles}));scheduleAutoPush();}catch(e){console.error('Failed to save users',e);}
+  try{localStorage.setItem(USERS_KEY,JSON.stringify({users,customRoles,memberPortal:memberPortalSettings}));scheduleAutoPush();}catch(e){console.error('Failed to save users',e);}
 }
 /* Same as saveUsers() but never schedules a push — used right after PULLING profiles from
    the cloud, so writing the merged result back to localStorage doesn't immediately bounce
    back into pushing (which could race the pull or needlessly resend data that just arrived). */
 function saveUsersLocalOnly(){
-  try{localStorage.setItem(USERS_KEY,JSON.stringify({users,customRoles}));}catch(e){console.error('Failed to save users',e);}
+  try{localStorage.setItem(USERS_KEY,JSON.stringify({users,customRoles,memberPortal:memberPortalSettings}));}catch(e){console.error('Failed to save users',e);}
 }
 function loadUsers(){
   try{
@@ -2346,7 +2367,7 @@ function loadUsers(){
       // Backward compatibility: older versions stored a plain array of users
       users=parsed;customRoles=[];
     } else {
-      users=parsed.users||[];customRoles=parsed.customRoles||[];
+      users=parsed.users||[];customRoles=parsed.customRoles||[];memberPortalSettings=parsed.memberPortal||null;
     }
   }catch(e){users=[];customRoles=[];}
 }
@@ -2488,7 +2509,7 @@ async function createFirstAdmin(){
 
 let authLoginMode='username';
 function setAuthLoginMode(mode){
-  authLoginMode=mode;
+  authLoginMode=mode;try{localStorage.setItem('lmr_login_mode',mode);}catch(e){}
   document.getElementById('login-mode-btn-username').style.background=mode==='username'?'#1a1a18':'';
   document.getElementById('login-mode-btn-username').style.color=mode==='username'?'#fff':'';
   document.getElementById('login-mode-btn-email').style.background=mode==='email'?'#1a1a18':'';
@@ -2507,6 +2528,7 @@ async function attemptLogin(){
   if(!fbAuth){errEl.textContent='Cloud authentication failed to initialize — reload and try again.';return;}
   if(!navigator.onLine){errEl.textContent='You appear to be offline. If you\'ve logged in on this device before, reconnect and reload the page instead — a fresh login needs a connection.';return;}
   errEl.style.color='#5f5e5a';errEl.textContent='Signing in…';
+  lastLoginPassword=password;
   const authEmail=resolveAuthEmail(mode,identifier);
   let profile=null;
   try{
@@ -2563,6 +2585,82 @@ async function attemptLogin(){
   }
 }
 
+/* ══════════════════════════════════════════
+   PASSWORD MANAGEMENT (v3.34.0)
+   Forced change at first login (profile.mustChangePassword, set when an Admin creates a user),
+   voluntary change (re-authenticates with the current password), and Forgot password (Firebase
+   reset email — only reaches accounts whose login address is a real email).
+   NOTE: the forced-change flag is enforced client-side; hard enforcement needs Cloud Functions.
+══════════════════════════════════════════ */
+let changePwMode='voluntary', lastLoginPassword='';
+function showChangePassword(mode){
+  changePwMode=mode;
+  ['changepw-current','changepw-new','changepw-new2'].forEach(id=>{document.getElementById(id).value='';});
+  document.getElementById('changepw-error').textContent='';
+  const forced=mode==='forced';
+  document.getElementById('changepw-intro').textContent=forced?'Your account was created by an administrator. Choose your own password to continue.':'Enter your current password, then choose a new one.';
+  document.getElementById('changepw-current-row').style.display=forced?'none':'block';
+  document.getElementById('changepw-cancel').textContent=forced?'Log out instead':'Cancel';
+  document.getElementById('auth-changepw').style.display='flex';
+}
+function cancelPasswordChange(e){
+  if(e)e.preventDefault();
+  if(changePwMode==='forced'){logout();return;}
+  document.getElementById('auth-changepw').style.display='none';
+}
+async function submitPasswordChange(){
+  const errEl=document.getElementById('changepw-error');
+  errEl.style.color='#a32d2d';errEl.textContent='';
+  const cur=document.getElementById('changepw-current').value;
+  const n1=document.getElementById('changepw-new').value;
+  const n2=document.getElementById('changepw-new2').value;
+  const curVisible=document.getElementById('changepw-current-row').style.display!=='none';
+  if(curVisible&&!cur){errEl.textContent='Enter your current password.';return;}
+  if(!n1||n1.length<6){errEl.textContent='New password must be at least 6 characters.';return;}
+  if(n1!==n2){errEl.textContent='New passwords do not match.';return;}
+  if((curVisible&&n1===cur)||(n1===lastLoginPassword&&lastLoginPassword)){errEl.textContent='Choose a password different from your current one.';return;}
+  if(!navigator.onLine){errEl.textContent='Changing your password needs an internet connection.';return;}
+  errEl.style.color='#5f5e5a';errEl.textContent='Saving…';
+  try{
+    const user=await ensureSignedIn();
+    if(curVisible){
+      await user.reauthenticateWithCredential(firebase.auth.EmailAuthProvider.credential(user.email,cur));
+    }
+    await user.updatePassword(n1);
+    loadUsers();
+    const p=users.find(u=>u.uid===user.uid);
+    if(p&&p.mustChangePassword){p.mustChangePassword=false;saveUsersLocalOnly();await pushUserProfile(p);}
+    lastLoginPassword='';
+    document.getElementById('auth-changepw').style.display='none';
+    if(changePwMode==='forced') bootApp();
+    else{setStatus('Password changed.');alert('Your password has been changed.');}
+  }catch(e){
+    errEl.style.color='#a32d2d';
+    if(e&&e.code==='auth/requires-recent-login'){
+      document.getElementById('changepw-current-row').style.display='block';
+      errEl.textContent='For security, enter your current password above and try again.';
+    } else if(e&&(e.code==='auth/wrong-password'||e.code==='auth/invalid-credential')){
+      errEl.textContent='Your current password is incorrect.';
+    } else errEl.textContent=authErrorMessage(e,'email');
+  }
+}
+async function forgotPassword(e){
+  if(e)e.preventDefault();
+  const errEl=document.getElementById('login-error');
+  errEl.style.color='#a32d2d';errEl.textContent='';
+  let email=authLoginMode==='email'?document.getElementById('login-username').value.trim():'';
+  if(!email) email=(prompt('Enter the email address you log in with. A password reset link will be sent to it.')||'').trim();
+  if(!email) return;
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||/@lmr\.accounts$/i.test(email)){
+    errEl.textContent='Enter the real email address on your account. Username-only accounts can\'t receive reset emails — ask your fund administrator for help.';return;
+  }
+  if(!fbAuth||!navigator.onLine){errEl.textContent='A connection is needed to send a reset email.';return;}
+  try{ await fbAuth.sendPasswordResetEmail(email.toLowerCase()); }
+  catch(err){ if(err&&err.code!=='auth/user-not-found'){errEl.textContent=authErrorMessage(err,'email');return;} }
+  errEl.style.color='#3b6d11';
+  errEl.textContent='If an account exists for that email, a reset link has been sent. Check your inbox and spam folder.';
+}
+
 function logout(){
   sessionStorage.removeItem('lmr_session');
   if(fbAuth&&fbAuth.currentUser){ fbAuth.signOut().catch(()=>{}); }
@@ -2575,6 +2673,7 @@ function bootApp(){
   document.getElementById('auth-login').style.display='none';
   document.getElementById('member-portal').style.display='none';
   document.getElementById('app-shell').style.display='none';
+  document.getElementById('auth-changepw').style.display='none';
 
   loadUsers();
   if(!currentUser){
@@ -2586,6 +2685,7 @@ function bootApp(){
   if(currentUser){
     const u=users.find(x=>x.uid===currentUser.uid);
     if(!u||u.active===false){currentUser=null;sessionStorage.removeItem('lmr_session');}
+    else if(u.mustChangePassword){showChangePassword('forced');return;}
   }
 
   if(!currentUser){
@@ -2723,7 +2823,8 @@ function renderMemberPortal(){
     return;
   }
   renderMemberDetail(name,'member-portal-content');
-  mountProjection('portal-projection-mount',name);
+  if(getMemberPortalSettings().projection) mountProjection('portal-projection-mount',name);
+  else{ const pm=document.getElementById('portal-projection-mount'); if(pm)pm.innerHTML=''; }
 }
 
 /* ── Users & Access management (Admin only) ── */
@@ -2784,7 +2885,7 @@ function clearUserForm(){
   document.getElementById('user-linked-member-row').style.display='none';
   document.getElementById('user-password-hint').textContent='';
   document.getElementById('user-edit-note').style.display='none';
-  setUserFormAuthMode('username');
+  setUserFormAuthMode('email');
   document.getElementById('user-mode-toggle').style.opacity='';
   document.querySelectorAll('#user-mode-toggle button').forEach(b=>b.disabled=false);
 }
@@ -2796,14 +2897,14 @@ function setUserFormMode(editing){
   if(!editing)document.getElementById('user-edit-id').value='';
 }
 async function addUser(){
-  const mode=userFormAuthMode;
+  const mode='email'; // v3.34.0: new users always log in by real email so password-reset emails reach them
   const username=document.getElementById('user-username').value.trim();
   const email=document.getElementById('user-email').value.trim();
   const password=document.getElementById('user-password').value;
   const role=document.getElementById('user-role').value;
   const linkedMemberName=role==='Member'?document.getElementById('user-linked-member').value:null;
   if(!username){alert(mode==='email'?'Enter a display name.':'Enter a username.');return;}
-  if(mode==='email'&&!email){alert('Enter an email address.');return;}
+  if(!email){alert('Enter the user\'s real email address — it is their login and is needed for password recovery.');return;}
   if(email&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){alert('Enter a valid email address, or leave it blank.');return;}
   if(users.find(u=>u.username&&u.username.toLowerCase()===username.toLowerCase())){alert('That username already exists.');return;}
   if(!password||password.length<6){alert('Password must be at least 6 characters.');return;}
@@ -2815,13 +2916,13 @@ async function addUser(){
     // Isolated secondary Firebase App so this doesn't sign the Admin themselves out —
     // see createUserOnSecondaryApp() for why that matters.
     const uid=await createUserOnSecondaryApp(authEmail,password);
-    const profile={uid,username,email:email||null,authMode:mode,role,linkedMemberName,active:true,createdAt:new Date().toISOString()};
+    const profile={uid,username,email:email||null,authMode:mode,role,linkedMemberName,active:true,mustChangePassword:true,createdAt:new Date().toISOString()};
     users.push(profile);
     saveUsers();
     await pushUserProfile(profile);
     clearUserForm();
     renderUsersTable();
-    setStatus('User "'+username+'" created.');
+    setStatus('User "'+username+'" created — they must set a new password at first login.');
   }catch(e){
     alert(authErrorMessage(e,mode));
   }
@@ -2925,7 +3026,7 @@ function renderUsersTable(){
     const isSelf=currentUser&&u.uid&&u.uid===currentUser.uid;
     const isLegacy=!u.uid;
     h+=`<tr class="${isLegacy?'':'tr-hover'}" ${isLegacy?'':`onclick="editUser('${u.uid}')" title="Click to edit"`} style="${isLegacy?'':'cursor:pointer'}">
-      <td><strong>${u.username}</strong>${isSelf?' <span style="font-size:10px;color:#888780">(you)</span>':''}${isLegacy?' <span class="tag tag-amber" style="font-size:9px">Not migrated yet</span>':''}</td>
+      <td><strong>${u.username}</strong>${isSelf?' <span style="font-size:10px;color:#888780">(you)</span>':''}${u.mustChangePassword?' <span class="tag tag-amber" style="font-size:9px">Password change pending</span>':''}${isLegacy?' <span class="tag tag-amber" style="font-size:9px">Not migrated yet</span>':''}</td>
       <td><span class="tag ${ROLE_COLORS[u.role]||'tag-amber'}">${u.role}</span></td>
       <td style="font-size:12px">${u.linkedMemberName||'—'}</td>
       <td>${isActive?'<span style="color:#3b6d11;font-size:12px">&#9679; Active</span>':'<span style="color:#a32d2d;font-size:12px">&#9679; Inactive</span>'}</td>
@@ -3052,6 +3153,59 @@ function removeRole(id){
   customRoles=customRoles.filter(x=>x.id!==id);
   saveUsers();renderRolesTable();
 }
+/* ══════════════════════════════════════════
+   MEMBER PORTAL ACCESS (v3.35.0)
+   Admin chooses which sections of the Member portal Members see. Stored as `memberPortal` beside
+   customRoles (USERS_KEY object, synced on the funds/{fundId} doc). Absent key = on, so existing
+   funds behave exactly as before. UI-level only: Firestore rules still let any active fund member
+   read the fund document, so this is not a database-level restriction.
+══════════════════════════════════════════ */
+const MEMBER_PORTAL_DEFS=[
+  {key:'summary',label:'Account summary',desc:'Units held, current value, cost basis, gain/loss and the underwater / break-even notice'},
+  {key:'performance',label:'Performance metrics',desc:'NAV return, average subscription NAV, break-even NAV, per-lot gain/loss'},
+  {key:'transactions',label:'Transaction history',desc:'Their own subscriptions, redemptions and transfers with running units'},
+  {key:'projection',label:'Investment projection',desc:'The growth projection calculator and explanation'},
+  {key:'pdf',label:'PDF & email statement',desc:'Buttons to download or email their statement'},
+];
+function getMemberPortalSettings(){
+  const st=memberPortalSettings||{},o={};
+  MEMBER_PORTAL_DEFS.forEach(d=>{o[d.key]=st[d.key]!==false;});
+  return o;
+}
+function memberPortalSummary(){
+  const c=getMemberPortalSettings();
+  const on=MEMBER_PORTAL_DEFS.filter(d=>c[d.key]).map(d=>d.label);
+  return 'View-only member portal — own records only. Sees: '+(on.length?on.join(', '):'only their name (nothing else enabled)')+'.';
+}
+function renderMemberPortalSettingsCard(){
+  const wrap=document.getElementById('member-portal-settings-wrap');if(!wrap)return;
+  const cur=getMemberPortalSettings();
+  wrap.innerHTML='<div class="card" id="member-portal-card"><div class="card-title">Member portal access</div>'
+    +'<div style="font-size:12px;color:#5f5e5a;line-height:1.6;margin-bottom:10px">Choose which parts of their own account users with the <strong>Member</strong> role can see. This applies to every Member, and they only ever see their own records. It controls what the portal displays — it is not a database-level restriction.</div>'
+    +'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:8px;margin-bottom:12px">'
+    +MEMBER_PORTAL_DEFS.map(d=>`<label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;margin:0;background:#f4f4f2;border-radius:8px;padding:10px 12px"><input type="checkbox" id="mp-${d.key}" ${cur[d.key]?'checked':''} style="width:auto;margin-top:2px;cursor:pointer;accent-color:#1d6f42"/><span><div style="font-weight:600;font-size:12px">${d.label}</div><div style="font-size:11px;color:#888780">${d.desc}</div></span></label>`).join('')
+    +'</div><div style="display:flex;gap:8px"><button class="btn-primary" onclick="saveMemberPortalSettings()">Save member access</button><button onclick="resetMemberPortalSettings()">Reset to all on</button></div></div>';
+}
+function focusMemberPortalCard(){
+  const el=document.getElementById('member-portal-card');
+  if(el)el.scrollIntoView({behavior:'smooth',block:'center'});
+}
+function saveMemberPortalSettings(){
+  if(!hasPermission('users')){alert('Access denied — restricted for your role.');return;}
+  const st={};
+  MEMBER_PORTAL_DEFS.forEach(d=>{const el=document.getElementById('mp-'+d.key);st[d.key]=el?el.checked:true;});
+  if(!Object.values(st).some(v=>v)&&!confirm('Nothing is enabled — Members will see only their name. Continue?'))return;
+  memberPortalSettings=st;
+  saveUsers();renderRolesTable();
+  setStatus('Member portal access saved.');
+}
+function resetMemberPortalSettings(){
+  if(!hasPermission('users')){alert('Access denied — restricted for your role.');return;}
+  memberPortalSettings=null;
+  saveUsers();renderRolesTable();
+  setStatus('Member portal access reset — all sections on.');
+}
+
 function summarizeRoleAccess(perms){
   const parts=PERMISSION_DEFS.map(p=>{
     if(!p.subs){
@@ -3067,6 +3221,7 @@ function summarizeRoleAccess(perms){
 }
 function renderRolesTable(){
   renderRolePermissionsGrid();
+  renderMemberPortalSettingsCard();
   const wrap=document.getElementById('roles-table-wrap');if(!wrap)return;
   const rows=[];
   ['Admin','Manager'].forEach(name=>{
@@ -3086,8 +3241,8 @@ function renderRolesTable(){
   rows.push(`<tr>
     <td><strong>Member</strong></td>
     <td><span style="font-size:11px;color:#888780">Built-in</span>${memberCount?' <span style="font-size:10px;color:#888780">('+memberCount+' user'+(memberCount!==1?'s':'')+')</span>':''}</td>
-    <td style="font-size:12px;color:#5f5e5a">View-only member portal — own account statement only; no access to fund-wide sections or other members' data.</td>
-    <td></td>
+    <td style="font-size:12px;color:#5f5e5a">${memberPortalSummary()}</td>
+    <td><button onclick="focusMemberPortalCard()" style="padding:3px 7px;font-size:11px" title="Edit what Members can see">&#9998;</button></td>
   </tr>`);
   customRoles.forEach(r=>{
     const inUseCount=users.filter(u=>u.role===r.name).length;
@@ -3123,8 +3278,8 @@ setTimeout(()=>{
   if(document.getElementById('jrn-lines-wrap')){addJournalLine();addJournalLine();}
   // initialize auth mode toggles (username mode by default, with the optional real-email field shown)
   if(document.getElementById('setup-mode-btn-username')) setAuthSetupMode('username');
-  if(document.getElementById('login-mode-btn-username')) setAuthLoginMode('username');
-  if(document.getElementById('user-mode-btn-username')) setUserFormAuthMode('username');
+  if(document.getElementById('login-mode-btn-username')) setAuthLoginMode(localStorage.getItem('lmr_login_mode')==='email'?'email':'username');
+  if(document.getElementById('user-mode-btn-username')) setUserFormAuthMode('email');
 },0);
 
 /* ── currency-formatted inputs ── */
@@ -6797,6 +6952,8 @@ function collapsibleCard(id,title,content,startOpen){
 }
 
 function renderMemberDetail(name,targetId){
+  const mp=(targetId==='member-portal-content')?getMemberPortalSettings():null; // Member portal honours Settings → Roles → Member portal access
+  const show=k=>!mp||mp[k];
   window._memberDetailLastName=name;
   window._memberDetailLastTarget=targetId||'member-detail';
   const s=getMemberStats(name);
@@ -6824,10 +6981,10 @@ function renderMemberDetail(name,targetId){
         <div style="font-weight:600;font-size:15px">${name}</div>
         <div style="font-size:12px;color:#5f5e5a">${s.myDeps.length} subscription${s.myDeps.length!==1?'s':''} &middot; ${(s.share*100).toFixed(2)}% of fund units</div>
       </div>
-      <button class="btn-pdf" onclick="generateMemberPDF('${name.replace(/'/g,"\\'")}')">&#128196; PDF statement</button>
-      <button class="btn-pdf" style="background:#e6f1fb;color:#0c447c;border-color:#b5d4f4" onclick="emailMemberStatement('${name.replace(/'/g,"\\'")}')">&#9993; Email statement</button>
+      ${show('pdf')?`<button class="btn-pdf" onclick="generateMemberPDF('${name.replace(/'/g,"\\'")}')">&#128196; PDF statement</button>
+      <button class="btn-pdf" style="background:#e6f1fb;color:#0c447c;border-color:#b5d4f4" onclick="emailMemberStatement('${name.replace(/'/g,"\\'")}')">&#9993; Email statement</button>`:''}
     </div>
-    <div class="metrics">
+    <div class="metrics" style="${show('summary')?'':'display:none'}">
       <div class="metric"><div class="metric-label">Net units held</div><div class="metric-val" style="color:#0c447c">${fmtU(s.myNetUnits)}</div><div class="metric-sub">${(s.share*100).toFixed(2)}% of fund</div></div>
       <div class="metric"><div class="metric-label">Current value at NAV</div><div class="metric-val" style="color:#0c447c">${fmt(s.currentValue)}</div><div class="metric-sub">${fmtU(s.myNetUnits)} × ${getCurrency()}${currentNAV.toLocaleString(undefined,{minimumFractionDigits:4,maximumFractionDigits:4})}</div></div>
       <div class="metric"><div class="metric-label">Net invested (cost basis)</div><div class="metric-val">${fmt(s.myAmount)}</div><div class="metric-sub">Subscriptions minus redemptions</div></div>
@@ -6836,7 +6993,7 @@ function renderMemberDetail(name,targetId){
   </div>`;
 
   // Loss/recovery banner — shown when member is underwater
-  if(isUnderwater){
+  if(isUnderwater&&show('summary')){
     const breakEvenNav=s.myAmount/s.myNetUnits; // NAV needed to return to cost basis
     const navNeeded=breakEvenNav-currentNAV;
     const navNeededPct=(navNeeded/currentNAV*100).toFixed(2);
@@ -6849,7 +7006,7 @@ function renderMemberDetail(name,targetId){
         <span style="color:#888780">Unit count is unchanged (${fmtU(s.myNetUnits)} units). This is a paper loss only — no cash is lost until units are redeemed.</span>
       </div>
     </div>`;
-  } else if(anyLotUnderwater){
+  } else if(anyLotUnderwater&&show('summary')){
     // Member is net positive but some individual subscription lots are below their entry NAV
     const underwaterLots=subBreakdown.filter(l=>l.lotUnderwater);
     h+=`<div style="background:#fdf6e3;border:0.5px solid #f0d98a;border-radius:10px;padding:11px 14px;margin-bottom:12px;font-size:12px;color:#633806;line-height:1.7">
@@ -6899,7 +7056,7 @@ function renderMemberDetail(name,targetId){
     }).join('')}
     </tbody></table></div>
   </div>`:''}`;
-  h+=collapsibleCard('mem-sec-perf','Performance metrics',perfContent,true);
+  if(show('performance')) h+=collapsibleCard('mem-sec-perf','Performance metrics',perfContent,true);
 
   // Card 3: transaction history collapsible
     // Running units must accumulate in strict chronological order — computed once below
@@ -6938,7 +7095,7 @@ function renderMemberDetail(name,targetId){
       +'<th class="num">Units</th><th class="num">Running units</th>'
       +'</tr></thead><tbody>'+orderedTxnRows.join('')+'</tbody></table></div>';
   }
-  h+=collapsibleCard('mem-sec-contrib','Transaction history',txnContent,false);
+  if(show('transactions')) h+=collapsibleCard('mem-sec-contrib','Transaction history',txnContent,false);
 
   document.getElementById(targetId||'member-detail').innerHTML=h;
 }
