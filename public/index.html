@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Like Minds Reimagined</title>
+<title>Like Minds Reimagined — v3.35.2</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
@@ -882,7 +882,7 @@ tr:last-child td{border-bottom:none}
       <div class="metrics">
         <div class="metric t-purple" data-tip="Total units held by all members after subscriptions, redemptions and transfers. Transactions still awaiting a valuation are not counted yet."><div class="metric-label">Net units outstanding</div><div class="metric-val" id="m-units">0</div></div>
         <div class="metric t-teal" data-tip="The price of one fund unit at the latest valuation (portfolio value &divide; units outstanding). New subscriptions and redemptions are priced from it."><div class="metric-label">NAV / unit</div><div class="metric-val" id="m-nav">&#8358;1,000</div></div>
-        <div class="metric t-coral" data-tip="Estimated uninvested cash: net invested less everything spent on purchases, including broker fees."><div class="metric-label">Cash available</div><div class="metric-val" id="m-cash">&#8358;0</div><div class="metric-sub">Net invested &minus; total purchases</div></div>
+        <div class="metric t-coral" data-tip="Uninvested cash per the accounting ledger: Cash and Cash Equivalents plus all its sub-accounts. It already reflects subscriptions, redemptions, purchases, sales, income, stock trades and fees."><div class="metric-label">Cash available</div><div class="metric-val" id="m-cash">&#8358;0</div><div class="metric-sub">Cash &amp; equivalents per ledger</div></div>
         <div class="metric t-pink" data-tip="Members who currently hold units. A red note shows how many of them are worth less than they paid in (underwater)."><div class="metric-label">Active members</div><div class="metric-val" id="m-members">0</div><div class="metric-sub">Members with units &gt; 0</div></div>
       </div>
     </div>
@@ -5548,9 +5548,10 @@ function renderOverview(){
   const unrealised=fundValueAtNAV-total;
   const unrealisedColor=unrealised>=0?'#3b6d11':'#a32d2d';
 
-  // Cash balance = net invested − total cash deployed on purchases (including transfer fees)
-  const totalPurchases=purchases.reduce((s,p)=>s+p.amount+(p.fee||0),0);
-  const cashAvailable=total-totalPurchases;
+  // v3.35.2: Cash available = the ledger's Cash and Cash Equivalents (account 1000 plus every
+  // nested sub-account) — same figure the Valuation → Investment breakdown uses. The old shortcut
+  // (net invested − purchases) ignored sale proceeds, income, stock trades, fees and settlement accounts.
+  const cashAvailable=getAccountBalanceWithDescendants('1000',null);
 
   // Active members = those with net units > 0
   const allMemberNames=[...new Set([...deposits.map(d=>d.member),...withdrawals.map(w=>w.member)])];
@@ -5585,7 +5586,8 @@ function renderOverview(){
       }
     }
   }
-  const mCash=document.getElementById('m-cash');if(mCash)mCash.textContent=fmt(Math.max(cashAvailable,0));
+  const mCash=document.getElementById('m-cash');if(mCash){mCash.textContent=(cashAvailable<0?'-':'')+fmt(Math.abs(cashAvailable));mCash.style.color=cashAvailable<-0.005?'#a32d2d':'';}
+  const mUnits=document.getElementById('m-units');if(mUnits)mUnits.textContent=fmtU(units);
   const mMem=document.getElementById('m-members');if(mMem)mMem.textContent=activeMemberCount;
   updateNavDisplay();
 
