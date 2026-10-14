@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Like Minds Reimagined — v3.35.2</title>
+<title>Like Minds Reimagined — v3.36.0</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
@@ -623,7 +623,7 @@ tr:last-child td{border-bottom:none}
       <div style="font-size:12px;color:#5f5e5a;line-height:1.6;margin-bottom:12px">
         Build a custom role with exactly the access it needs. Tick each section a user with this role should be able to see and use.
         The built-in <strong>Admin</strong> and <strong>Manager</strong> roles cannot be edited. <strong>Member</strong> is a separate view-only
-        portal for a single member's own statement and isn't part of this permission grid — use the Member portal access card below to choose what Members see.
+        portal for a single member's own statement and isn't part of this permission grid — use the Member portal access card below to choose what Members see, or delete it from the Roles table and create your own "Member" role here with exactly the access you want.
       </div>
       <div class="row">
         <div class="f15"><label>Role name</label><input id="role-name" type="text" placeholder="e.g. Accountant"/></div>
@@ -705,7 +705,7 @@ tr:last-child td{border-bottom:none}
   <div id="settings-data-storage" class="settings-sub" style="display:none">
     <div class="card">
       <div class="card-title">Data storage</div>
-      <div style="font-size:13px;color:#5f5e5a;line-height:1.6;margin-bottom:14px">Data is saved in your browser's <strong>localStorage</strong> — permanent on this device. Export a backup regularly and import it to restore on any device or browser.</div>
+      <div style="font-size:13px;color:#5f5e5a;line-height:1.6;margin-bottom:14px">Fund data is stored in the cloud and cached in this browser until you log out (logging out erases this device's copy). Export a backup regularly and import it to restore on any device or browser. <strong>Backups no longer include KYC</strong> (next-of-kin and bank details) — those stay only in the protected cloud KYC store.</div>
       <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px">
         <button style="background:#eaf3de;color:#27500a;border-color:#c0dd97" onclick="exportJSON()">&#8595; Export backup</button>
         <button onclick="toggleImport()">&#8593; Import backup</button>
@@ -1920,12 +1920,12 @@ function gatherSyncPayload(){
   loadUsers();
   return {
     deposits,withdrawals,portfolioItems,purchases,brokerRegistry,assetTypeRegistry,
-    navValuations,profitRounds,kycData,membersRegistry,transfers,sales,incomeRecords,
+    navValuations,profitRounds,membersRegistry,transfers,sales,incomeRecords, // v3.36.0: kycData no longer rides on this doc — see funds/{fundId}/kyc/records
     journalEntries,corporateActions,customAccounts,coaOverrides,fundLaunchNav,
     allocationTargets,allocationHistory,stockHoldings,stockTxns,stockDividends,
     settings:{fundName:document.getElementById('fund-name').value,currency:getCurrency(),
       nav:document.getElementById('init-nav').value,startDate:document.getElementById('fund-start').value},
-    projectionAssumptions:projectionAssumptions||null,customRoles,memberPortal:memberPortalSettings||null,
+    projectionAssumptions:projectionAssumptions||null,customRoles,memberPortal:memberPortalSettings||null,memberRoleRemoved,
     updatedAt:Date.now()
   };
 }
@@ -1935,10 +1935,13 @@ function gatherSyncPayload(){
    before bootApp() has ever run; load() picks it up naturally afterward.
    `_v27:true` prevents load()'s legacy-migration branch from firing. */
 function writeCloudDataToLocalStorage(d){
+  // v3.36.0 — a fund doc that still carries the pre-v3.36.0 kycData map is kept in memory only
+  // (never written to localStorage) until an Admin's session moves it to funds/{fundId}/kyc/records.
+  pendingLegacyKyc=(d.kycData&&typeof d.kycData==='object'&&Object.keys(d.kycData).length)?d.kycData:null;
   const fundData={
     deposits:d.deposits||[],withdrawals:d.withdrawals||[],portfolioItems:d.portfolioItems||[],
     purchases:d.purchases||[],brokerRegistry:d.brokerRegistry||[],assetTypeRegistry:d.assetTypeRegistry||[],
-    navValuations:d.navValuations||[],profitRounds:d.profitRounds||[],kycData:d.kycData||{},
+    navValuations:d.navValuations||[],profitRounds:d.profitRounds||[],
     membersRegistry:d.membersRegistry||[],transfers:d.transfers||[],sales:d.sales||[],incomeRecords:d.incomeRecords||[],
     journalEntries:d.journalEntries||[],corporateActions:d.corporateActions||[],customAccounts:d.customAccounts||[],
     coaOverrides:d.coaOverrides||{},fundLaunchNav:(d.fundLaunchNav!=null?d.fundLaunchNav:null),
@@ -1952,7 +1955,7 @@ function writeCloudDataToLocalStorage(d){
   // read whatever's currently cached locally so we don't wipe profiles pulled a moment ago.
   let existingUsers=[];
   try{ const raw=localStorage.getItem(USERS_KEY); if(raw){ const p=JSON.parse(raw); existingUsers=Array.isArray(p)?p:(p.users||[]); } }catch(e){}
-  localStorage.setItem(USERS_KEY,JSON.stringify({users:existingUsers,customRoles:d.customRoles||[],memberPortal:d.memberPortal||null}));
+  localStorage.setItem(USERS_KEY,JSON.stringify({users:existingUsers,customRoles:d.customRoles||[],memberPortal:d.memberPortal||null,memberRoleRemoved:d.memberRoleRemoved===true}));
 }
 
 /* ══════════════════════════════════════════
@@ -2005,7 +2008,10 @@ async function pushAllUserProfiles(){
   const col=fundMembersCollection();
   if(!col) return;
   loadUsers();
-  const migrated=users.filter(u=>u.uid); // legacy (unmigrated) hash-based entries can't be pushed — no uid yet
+  // legacy (unmigrated) hash-based entries can't be pushed — no uid yet. v3.36.0: non-Admins only push their own
+  // profile (the rules reject anything else), instead of firing one failing write per member on every save.
+  const isAdm=currentUser&&currentUser.role==='Admin';
+  const migrated=users.filter(u=>u.uid&&(isAdm||(currentUser&&u.uid===currentUser.uid)));
   let failed=0;
   for(const p of migrated){ if(!(await pushUserProfile(p,true))) failed++; }
   if(failed) console.warn('Profile push: '+failed+' of '+migrated.length+' profile(s) failed to sync.');
@@ -2049,8 +2055,181 @@ function renderFundIdDisplay(){
   el.textContent=fundId?('Connected fund (reference only): '+fundId):'Not connected to a fund yet.';
 }
 
+/* ══════════════════════════════════════════
+   KYC STORE, MEMBER STATEMENTS & ACCESS CONFIG (v3.36.0 — P0 security)
+   - KYC (next-of-kin + bank details) lives ONLY in funds/{fundId}/kyc/records as
+     {byMember:{[memberName]:record}}. Firestore rules let only Admins, or roles listed in
+     funds/{fundId}/config/access.kycRoles, read or write it. It is never written to
+     localStorage, the fund doc, or JSON backups.
+   - Member-portal users can no longer read funds/{fundId}. Each portal user gets a
+     funds/{fundId}/statements/{uid} doc holding only their own records plus fund-level NAV
+     figures, republished (only when it changed) after every staff push.
+   - funds/{fundId}/config/access is Admin-written: {kycRoles:[role names holding the kyc
+     permission]} — the rules read it so custom-role KYC access is enforced in the database.
+══════════════════════════════════════════ */
+let pendingLegacyKyc=null;   // pre-v3.36.0 kycData still sitting on the fund doc, awaiting Admin migration
+let kycLoaded=false;         // true once kycData was read from the cloud this session
+let portalStatement=null;    // set only in the Member portal: this user's statement doc
+let lastPublishedStatements={}; // uid -> JSON of the last statement this session published
+let lastPublishedAccess=null;
+function fundSubDoc(col,id){ if(!fbDb||!fundId) return null; return fbDb.collection('funds').doc(fundId).collection(col).doc(id); }
+function fundKycDoc(){ return fundSubDoc('kyc','records'); }
+function fundAccessDoc(){ return fundSubDoc('config','access'); }
+function fundStatementDoc(uid){ return fundSubDoc('statements',uid); }
+function canUseKYC(){ return !!currentUser&&!portalStatement&&hasPermission('kyc'); }
+function refreshKYCViews(){
+  try{
+    updateKYCMemberDropdown();
+    const sel=document.getElementById('kyc-member-select');
+    if(sel&&sel.value){ loadKYCForm(sel.value); renderKYCMembersOverview(); }
+  }catch(e){}
+}
+async function loadKYCFromCloud(){
+  kycData={};kycLoaded=false;
+  if(!canUseKYC()||!fundKycDoc()) return;
+  try{
+    await ensureSignedIn();
+    const snap=await fundKycDoc().get();
+    kycData=(snap.exists&&snap.data().byMember)||{};
+    kycLoaded=true;
+  }catch(e){ console.warn('KYC load failed:',e.message); }
+  refreshKYCViews();
+}
+async function saveKYCRecordCloud(name,rec){
+  const ref=fundKycDoc();
+  if(!ref){ alert('This device is not connected to a fund, so the KYC record was not saved.'); return false; }
+  try{
+    await ensureSignedIn();
+    await ref.set({byMember:{[name]:rec},updatedAt:Date.now(),updatedBy:currentUser?currentUser.uid:null},{merge:true});
+    setStatus('KYC saved to the cloud — '+new Date().toLocaleTimeString());
+    return true;
+  }catch(e){ alert('The KYC record could not be saved to the cloud: '+e.message); return false; }
+}
+async function deleteKYCRecordCloud(name){
+  const ref=fundKycDoc(); if(!ref||!canUseKYC()) return;
+  try{ await ensureSignedIn(); await ref.update(new firebase.firestore.FieldPath('byMember',name),firebase.firestore.FieldValue.delete()); }
+  catch(e){ console.warn('KYC delete failed:',e.message); }
+}
+async function restoreKYCFromBackup(backupKyc){
+  const ref=fundKycDoc(); if(!ref) return;
+  try{
+    await ensureSignedIn();
+    const snap=await ref.get();
+    const existing=(snap.exists&&snap.data().byMember)||{};
+    const merged={...backupKyc,...existing}; // cloud copy wins
+    await ref.set({byMember:merged,updatedAt:Date.now(),updatedBy:currentUser?currentUser.uid:null},{merge:true});
+    kycData=merged;kycLoaded=true;refreshKYCViews();
+    alert('KYC restore finished — '+(Object.keys(merged).length-Object.keys(existing).length)+' record(s) added.');
+  }catch(e){ alert('KYC restore failed: '+e.message); }
+}
+/* One-time move of kycData off the fund doc. Admin only: copies it into kyc/records (records already
+   there win), then deletes the field from funds/{fundId}. Safe to call repeatedly. */
+async function maybeMigrateLegacyKyc(){
+  if(!pendingLegacyKyc||!currentUser||currentUser.role!=='Admin'||!fundDataDoc()) return;
+  try{
+    await ensureSignedIn();
+    const ref=fundKycDoc();
+    const snap=await ref.get();
+    const existing=(snap.exists&&snap.data().byMember)||{};
+    const merged={...pendingLegacyKyc,...existing};
+    await ref.set({byMember:merged,migratedAt:Date.now(),updatedBy:currentUser.uid},{merge:true});
+    await fundDataDoc().update({kycData:firebase.firestore.FieldValue.delete()});
+    pendingLegacyKyc=null;kycData=merged;kycLoaded=true;
+    refreshKYCViews();
+    renderSyncStatus('&#10003; KYC moved to its protected store (v3.36.0 security migration).');
+    if(localStorage.getItem('lmr_pending_sync')==='true') pushToCloud();
+  }catch(e){
+    console.warn('KYC migration failed:',e.message);
+    renderSyncStatus('&#10007; KYC migration failed — '+esc(e.message)+'. It will retry at your next login.',true);
+  }
+}
+/* The minimal data the Member portal needs to draw one member's statement, projection and PDF. */
+function buildMemberStatement(profile){
+  const name=profile.linkedMemberName;
+  const pick=(o,keys)=>{const r={};keys.forEach(k=>{if(o[k]!==undefined)r[k]=o[k];});return r;};
+  const reg=membersRegistry.find(m=>m.name===name);
+  return {
+    v:1,uid:profile.uid,memberName:name,
+    deposits:deposits.filter(d=>d.member===name).map(d=>pick(d,['id','member','date','amount','nav','units','applicableValuationDate'])),
+    withdrawals:withdrawals.filter(w=>w.member===name).map(w=>pick(w,['id','member','date','amount','nav','units','applicableValuationDate'])),
+    // counterparty names are not disclosed to the member
+    transfers:transfers.filter(t=>t.fromMember===name||t.toMember===name).map(t=>({id:t.id,date:t.date,units:t.units,
+      fromMember:t.fromMember===name?name:'(another member)',toMember:t.toMember===name?name:'(another member)'})),
+    navValuations:navValuations.map(v=>({id:v.id,date:v.date,nav:v.nav})),
+    fundLaunchNav:fundLaunchNav!=null?fundLaunchNav:null,
+    totalFundUnits:getTotalUnits(),
+    settings:{fundName:document.getElementById('fund-name').value,currency:getCurrency(),
+      nav:document.getElementById('init-nav').value,startDate:document.getElementById('fund-start').value},
+    member:reg?pick(reg,['id','name','email','memberId','dateJoined']):{name},
+    memberPortal:memberPortalSettings||null,memberRoleRemoved:memberRoleRemoved===true,
+    projection:JSON.parse(JSON.stringify({actual:getProjectionBlend('actual'),target:getProjectionBlend('target')})),
+    assetTypes:assetTypeRegistry.map(t=>({code:t.code,name:t.name}))
+  };
+}
+/* Called after every successful staff push (and once after an Admin/Manager logs in). Writes only the
+   statements and access config that actually changed since the last publish in this session. */
+async function publishMemberStatements(){
+  if(!fundId||!fbDb||portalStatement||!currentUser||isPortalRole(currentUser.role)) return;
+  try{
+    await ensureSignedIn();
+    const batch=fbDb.batch();let writes=0;
+    loadUsers();
+    users.filter(u=>u.uid&&u.linkedMemberName&&u.active!==false&&isPortalRole(u.role)).forEach(u=>{
+      const st=buildMemberStatement(u);
+      const json=JSON.stringify(st);
+      if(lastPublishedStatements[u.uid]===json) return;
+      batch.set(fundStatementDoc(u.uid),{...st,publishedAt:Date.now(),publishedBy:currentUser.uid});
+      lastPublishedStatements[u.uid]=json;writes++;
+    });
+    if(currentUser.role==='Admin'){
+      const kycRoles=customRoles.filter(r=>r.permissions&&r.permissions.kyc).map(r=>r.name).sort();
+      const json=JSON.stringify(kycRoles);
+      if(lastPublishedAccess!==json){ batch.set(fundAccessDoc(),{kycRoles,updatedAt:Date.now(),updatedBy:currentUser.uid}); lastPublishedAccess=json; writes++; }
+    }
+    if(writes) await batch.commit();
+  }catch(e){
+    lastPublishedStatements={};lastPublishedAccess=null; // retry everything next time
+    console.warn('Statement publish failed:',e.message);
+  }
+}
+async function deleteMemberStatement(uid){
+  const ref=fundStatementDoc(uid); if(!ref) return;
+  try{ await ensureSignedIn(); await ref.delete(); delete lastPublishedStatements[uid]; }catch(e){ console.warn('Statement delete failed:',e.message); }
+}
+/* Returns this user's own statement doc, or null if none was published (or it can't be read). */
+async function fetchOwnStatement(uid){
+  const ref=fundStatementDoc(uid); if(!ref) return null;
+  try{ await ensureSignedIn(); const snap=await ref.get(); return snap.exists?snap.data():null; }
+  catch(e){ console.warn('Statement fetch failed:',e.message); return null; }
+}
+/* Member portal only: replaces in-memory fund data with the statement's member-scoped subset, so the
+   existing renderMemberDetail / PDF / projection code draws it unchanged. Nothing is written to localStorage. */
+function applyStatementToGlobals(st){
+  portalStatement=st;
+  deposits=st.deposits||[];withdrawals=st.withdrawals||[];transfers=st.transfers||[];
+  navValuations=st.navValuations||[];fundLaunchNav=st.fundLaunchNav!=null?st.fundLaunchNav:null;
+  membersRegistry=st.member?[st.member]:[];
+  assetTypeRegistry=st.assetTypes||[];
+  memberPortalSettings=st.memberPortal||null;memberRoleRemoved=st.memberRoleRemoved===true;
+  portfolioItems=[];purchases=[];sales=[];incomeRecords=[];journalEntries=[];corporateActions=[];
+  stockHoldings=[];stockTxns=[];stockDividends=[];allocationTargets=[];allocationHistory=[];
+  kycData={};profitRounds=[];brokerRegistry=[];customAccounts=[];coaOverrides={};
+  const s=st.settings||{};
+  if(s.fundName){document.getElementById('fund-name').value=s.fundName;document.getElementById('fund-name-header').textContent=s.fundName;}
+  if(s.currency)document.getElementById('currency').value=s.currency;
+  if(s.nav)document.getElementById('init-nav').value=s.nav;
+  if(s.startDate)document.getElementById('fund-start').value=s.startDate;
+}
+function readSessionStatement(){
+  try{ const raw=sessionStorage.getItem('lmr_statement'); return raw?JSON.parse(raw):null; }catch(e){ return null; }
+}
+
 async function pushToCloud(){
   if(!fundId){ renderSyncStatus('No fund connected yet — see Fund ID below.', true); return; }
+  if(portalStatement) return; // v3.36.0 — Member portal is read-only
+  // v3.36.0 — never push when this device holds no fund data at all (e.g. right after a logout wipe):
+  // that would overwrite the shared fund with an empty document.
+  if(!localStorage.getItem(LS_KEY)){ localStorage.removeItem('lmr_pending_sync'); return; }
   try{
     await ensureSignedIn();
     const payload=gatherSyncPayload();
@@ -2060,9 +2239,12 @@ async function pushToCloud(){
     localStorage.removeItem('lmr_pending_sync');
     renderSyncStatus('&#10003; Synced to cloud — '+new Date().toLocaleTimeString());
     recordSyncTime();
+    publishMemberStatements(); // v3.36.0 — keep each Member's statements/{uid} doc current
   }catch(e){
     localStorage.setItem('lmr_pending_sync','true');
-    renderSyncStatus('&#10007; Sync failed, will retry — '+e.message, true);
+    if(pendingLegacyKyc&&!(currentUser&&currentUser.role==='Admin')){
+      renderSyncStatus('Saved on this device. Cloud sync resumes once an Admin logs in once to finish the v3.36.0 security update.', true);
+    } else renderSyncStatus('&#10007; Sync failed, will retry — '+esc(e.message), true);
     console.warn('LMR cloud push failed:', e.message);
   }
 }
@@ -2089,7 +2271,7 @@ async function pullFromCloud(){
         if(!stillValid){
           suppressAutoPush=false;
           alert('Your account was changed or removed by a sync from another device. Please log in again.');
-          logout();
+          logout({skipFlush:true});
           return;
         }
         const fresh=users.find(u=>u.uid===currentUser.uid);
@@ -2105,10 +2287,11 @@ async function pullFromCloud(){
       if(document.getElementById('settings-roles')&&document.getElementById('settings-roles').style.display!=='none') renderRolesTable();
       suppressAutoPush=false;
     }
+    if(currentUser){ await maybeMigrateLegacyKyc(); if(appBooted) loadKYCFromCloud(); }
     renderSyncStatus('&#10003; Pulled from cloud — '+new Date().toLocaleTimeString());
     recordSyncTime();
   }catch(e){
-    renderSyncStatus('&#10007; Pull failed — '+e.message, true);
+    renderSyncStatus('&#10007; Pull failed — '+esc(e.message), true);
     console.warn('LMR cloud pull failed:', e.message);
   }
 }
@@ -2119,7 +2302,7 @@ async function syncNow(){
     await ensureSignedIn();
     if(localStorage.getItem('lmr_pending_sync')==='true'){ await pushToCloud(); return; }
     await pullFromCloud();
-  }catch(e){ renderSyncStatus('&#10007; Sync failed — '+e.message, true); }
+  }catch(e){ renderSyncStatus('&#10007; Sync failed — '+esc(e.message), true); }
 }
 
 /* Debounced auto-push, called from save() and saveUsers(). Guards against
@@ -2198,10 +2381,11 @@ function adoptFundId(newId){
   }
   fundId=newId;
   localStorage.setItem('lmr_fund_id',newId);
+  localStorage.setItem('lmr_cutover_v330','true'); // v3.36.0 — this device pulls first; it never does the one-time v3.30.0 authoritative push
 }
 /* "Disconnect" now forgets this device's fund and logs out; the next login re-detects the fund. */
 function disconnectFund(){
-  if(!confirm("Disconnect this device from its fund? You will be logged out, and the device will reconnect automatically the next time you log in. Local data is kept until then."))return;
+  if(!confirm("Disconnect this device from its fund? You will be logged out and this device's copy of the fund data is erased; it reconnects automatically the next time you log in."))return;
   localStorage.removeItem('lmr_fund_id');
   fundId=null;
   logout();
@@ -2231,6 +2415,7 @@ const USERS_KEY='inv_club_v2_users';
    successful login. */
 let users=[]; // [{uid,username,email,authMode,role,linkedMemberName,active,createdAt}]
 let currentUser=null; // {uid,username,role,linkedMemberName}
+let memberRoleRemoved=false; // v3.35.3 — true once the Admin has deleted the built-in Member role (a role named 'Member' is then an ordinary custom role)
 let memberPortalSettings=null; // v3.35.0 — which Member-portal sections Members see; null = all on
 let customRoles=[]; // [{id,name,permissions:{overview,contributions,portfolio,accounting,members,kyc,settings,users},builtin:false}]
 
@@ -2300,8 +2485,12 @@ const BUILTIN_ROLE_PERMISSIONS={
     return p;
   })(),
 };
+/* v3.35.3 — 'Member' is the built-in view-only portal role only while memberRoleRemoved is false.
+   After the Admin deletes it, a custom role the Admin creates with the name 'Member' is an ordinary
+   permission-grid role (full app shell, gated by its ticked sections) — not the portal. */
+function isPortalRole(roleName){ return roleName==='Member'&&!memberRoleRemoved; }
 function getAllRoleNames(){
-  return ['Admin','Manager',...customRoles.map(r=>r.name),'Member'];
+  return ['Admin','Manager',...customRoles.map(r=>r.name),...(memberRoleRemoved?[]:['Member'])];
 }
 function getRolePermissions(roleName){
   if(BUILTIN_ROLE_PERMISSIONS[roleName]) return BUILTIN_ROLE_PERMISSIONS[roleName];
@@ -2350,26 +2539,26 @@ async function hashPassword(pw){
   return [...new Uint8Array(buf)].map(b=>b.toString(16).padStart(2,'0')).join('');
 }
 function saveUsers(){
-  try{localStorage.setItem(USERS_KEY,JSON.stringify({users,customRoles,memberPortal:memberPortalSettings}));scheduleAutoPush();}catch(e){console.error('Failed to save users',e);}
+  try{localStorage.setItem(USERS_KEY,JSON.stringify({users,customRoles,memberPortal:memberPortalSettings,memberRoleRemoved}));scheduleAutoPush();}catch(e){console.error('Failed to save users',e);}
 }
 /* Same as saveUsers() but never schedules a push — used right after PULLING profiles from
    the cloud, so writing the merged result back to localStorage doesn't immediately bounce
    back into pushing (which could race the pull or needlessly resend data that just arrived). */
 function saveUsersLocalOnly(){
-  try{localStorage.setItem(USERS_KEY,JSON.stringify({users,customRoles,memberPortal:memberPortalSettings}));}catch(e){console.error('Failed to save users',e);}
+  try{localStorage.setItem(USERS_KEY,JSON.stringify({users,customRoles,memberPortal:memberPortalSettings,memberRoleRemoved}));}catch(e){console.error('Failed to save users',e);}
 }
 function loadUsers(){
   try{
     const raw=localStorage.getItem(USERS_KEY);
-    if(!raw){users=[];customRoles=[];return;}
+    if(!raw){users=[];customRoles=[];memberRoleRemoved=false;return;}
     const parsed=JSON.parse(raw);
     if(Array.isArray(parsed)){
       // Backward compatibility: older versions stored a plain array of users
-      users=parsed;customRoles=[];
+      users=parsed;customRoles=[];memberRoleRemoved=false;
     } else {
-      users=parsed.users||[];customRoles=parsed.customRoles||[];memberPortalSettings=parsed.memberPortal||null;
+      users=parsed.users||[];customRoles=parsed.customRoles||[];memberPortalSettings=parsed.memberPortal||null;memberRoleRemoved=parsed.memberRoleRemoved===true;
     }
-  }catch(e){users=[];customRoles=[];}
+  }catch(e){users=[];customRoles=[];memberRoleRemoved=false;}
 }
 
 /* Deterministic "fake" email Firebase Auth can use as a login identifier for someone who
@@ -2575,6 +2764,20 @@ async function attemptLogin(){
     }
     currentUser={uid:profile.uid,username:profile.username,role:profile.role,linkedMemberName:profile.linkedMemberName||null};
     sessionStorage.setItem('lmr_session',JSON.stringify(currentUser));
+    // v3.36.0 — a 'Member' account reads ONLY its own statements/{uid} doc, never the fund document.
+    // (If the Admin has replaced the built-in Member role with a custom 'Member' role, the statement
+    // says so — or none exists — and the normal full pull below is used instead.)
+    if(profile.role==='Member'){
+      errEl.textContent='Loading your statement…';
+      const st=await fetchOwnStatement(profile.uid);
+      if(st&&st.memberRoleRemoved!==true){
+        localStorage.removeItem(LS_KEY); // no fund-wide cache on a Member's device
+        users=[profile];saveUsersLocalOnly(); // and no other people's profiles either
+        try{ sessionStorage.setItem('lmr_statement',JSON.stringify(st)); }catch(e){}
+        bootApp();
+        return;
+      }
+    }
     // A device that just connected via Fund ID has empty local fund data — pull the
     // real thing now that we're authenticated as a legitimate member.
     if(fundId && navigator.onLine){ try{ await pullFromCloud(); }catch(e){} }
@@ -2661,10 +2864,38 @@ async function forgotPassword(e){
   errEl.textContent='If an account exists for that email, a reset link has been sent. Check your inbox and spam folder.';
 }
 
-function logout(){
-  sessionStorage.removeItem('lmr_session');
-  if(fbAuth&&fbAuth.currentUser){ fbAuth.signOut().catch(()=>{}); }
-  location.reload();
+/* v3.36.0 — logout wipes this device: fund data, user profiles, sync flags, the session, and
+   Firestore's offline (IndexedDB) cache, so KYC/financial data can't be read after logout on a shared
+   or borrowed device. Unsynced edits are pushed first; if that fails the user is asked before they
+   are discarded. Only lmr_fund_id (a non-secret lookup key) and lmr_login_mode survive.
+   opts.skipFlush: don't try to push first (used when the account was removed by another device). */
+const LOGOUT_KEEP_KEYS=['lmr_fund_id','lmr_login_mode'];
+let loggingOut=false;
+async function logout(opts){
+  opts=opts||{};
+  if(loggingOut) return; loggingOut=true;
+  try{
+    clearTimeout(syncDebounceTimer);
+    if(!opts.skipFlush&&!portalStatement&&localStorage.getItem('lmr_pending_sync')==='true'){
+      if(navigator.onLine){ try{ await pushToCloud(); }catch(e){} }
+      if(localStorage.getItem('lmr_pending_sync')==='true'&&
+         !confirm('Some changes made on this device have not reached the cloud yet. Logging out now will DELETE them from this device.\n\nPress Cancel to stay logged in and retry the sync, or OK to log out and discard them.')){
+        loggingOut=false; return;
+      }
+    }
+    suppressAutoPush=true;
+    try{ Object.keys(localStorage).forEach(k=>{ if(!LOGOUT_KEEP_KEYS.includes(k)) localStorage.removeItem(k); }); }catch(e){}
+    try{ sessionStorage.clear(); }catch(e){}
+    kycData={};portalStatement=null;currentUser=null;
+    if(fbAuth&&fbAuth.currentUser){ try{ await fbAuth.signOut(); }catch(e){} }
+    if(fbDb){
+      const withTimeout=(p)=>Promise.race([p,new Promise(r=>setTimeout(r,3000))]);
+      try{ await withTimeout(fbDb.terminate()); }catch(e){}
+      try{ await withTimeout(fbDb.clearPersistence()); }catch(e){ console.warn('Could not clear the offline cache:',e.message); }
+    }
+  }finally{
+    location.reload();
+  }
 }
 
 /* Decide which screen to show: setup, login, member portal, or full app */
@@ -2697,18 +2928,33 @@ function bootApp(){
     return;
   }
 
+  // v3.36.0 — Member portal: draw from this user's statement only (never the fund-wide cache).
+  if(currentUser.role==='Member'){
+    const st=readSessionStatement();
+    if(st&&st.memberRoleRemoved!==true){
+      applyStatementToGlobals(st);
+      updateNavDisplay();
+      appBooted=true;
+      document.getElementById('member-portal').style.display='block';
+      document.getElementById('portal-fund-name').textContent=document.getElementById('fund-name').value||'Investment Manager';
+      document.getElementById('portal-user-label').textContent=currentUser.username+' — Member (view only)';
+      renderMemberPortal();
+      return;
+    }
+  }
+
   load();
   appBooted=true;
   const fundName=document.getElementById('fund-name').value||'Investment Manager';
 
-  if(currentUser.role==='Member'){
-    document.getElementById('member-portal').style.display='block';
-    document.getElementById('portal-fund-name').textContent=fundName;
-    document.getElementById('portal-user-label').textContent=currentUser.username+' — Member (view only)';
-    renderMemberPortal();
+  if(isPortalRole(currentUser.role)){
+    // A built-in-Member session with no statement in this tab (shouldn't normally happen): drop any
+    // fund-wide data and ask the user to log in again so the statement is fetched.
+    localStorage.removeItem(LS_KEY);
+    alert('Your statement could not be loaded. Please log in again.');
+    logout({skipFlush:true});
     return;
   }
-
   document.getElementById('app-shell').style.display='flex';
   document.getElementById('app-user-label').textContent=currentUser.username+' — '+currentUser.role;
   applyRolePermissions();
@@ -2719,6 +2965,13 @@ function bootApp(){
   updateDepNavHint();
   checkDepNavStaleness();
   renderSyncPanel();
+  // v3.36.0 — post-boot cloud work for staff sessions (all best-effort, async)
+  (async()=>{
+    if(!fundId||!navigator.onLine) return;
+    await maybeMigrateLegacyKyc();
+    loadKYCFromCloud();
+    publishMemberStatements();
+  })();
 }
 
 /* Hide Settings & KYC for Manager role; Admin sees everything */
@@ -2819,7 +3072,7 @@ function renderMemberPortal(){
   const name=currentUser.linkedMemberName;
   const exists=deposits.some(d=>d.member===name)||membersRegistry.some(m=>m.name===name);
   if(!exists){
-    content.innerHTML=`<div class="card"><div class="empty">No records found yet for <strong>${name}</strong>. Contact your fund administrator.</div></div>`;
+    content.innerHTML=`<div class="card"><div class="empty">No records found yet for <strong>${esc(name)}</strong>. Contact your fund administrator.</div></div>`;
     return;
   }
   renderMemberDetail(name,'member-portal-content');
@@ -2837,15 +3090,17 @@ function syncUserRoleDropdown(){
     opt.value=r.name;opt.textContent=r.name+' (custom)';
     sel.appendChild(opt);
   });
-  const memberOpt=document.createElement('option');
-  memberOpt.value='Member';memberOpt.textContent='Member';
-  sel.appendChild(memberOpt);
+  if(!memberRoleRemoved){
+    const memberOpt=document.createElement('option');
+    memberOpt.value='Member';memberOpt.textContent='Member';
+    sel.appendChild(memberOpt);
+  }
   if(cur&&[...sel.options].some(o=>o.value===cur))sel.value=cur;
 }
 function onUserRoleChange(){
   const role=document.getElementById('user-role').value;
   const row=document.getElementById('user-linked-member-row');
-  if(role==='Member'){
+  if(isPortalRole(role)){
     row.style.display='block';
     syncLinkedMemberDropdown();
   } else {
@@ -2902,13 +3157,13 @@ async function addUser(){
   const email=document.getElementById('user-email').value.trim();
   const password=document.getElementById('user-password').value;
   const role=document.getElementById('user-role').value;
-  const linkedMemberName=role==='Member'?document.getElementById('user-linked-member').value:null;
+  const linkedMemberName=isPortalRole(role)?document.getElementById('user-linked-member').value:null;
   if(!username){alert(mode==='email'?'Enter a display name.':'Enter a username.');return;}
   if(!email){alert('Enter the user\'s real email address — it is their login and is needed for password recovery.');return;}
   if(email&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){alert('Enter a valid email address, or leave it blank.');return;}
   if(users.find(u=>u.username&&u.username.toLowerCase()===username.toLowerCase())){alert('That username already exists.');return;}
   if(!password||password.length<6){alert('Password must be at least 6 characters.');return;}
-  if(role==='Member'&&!linkedMemberName){alert('Select which member this login represents.');return;}
+  if(isPortalRole(role)&&!linkedMemberName){alert('Select which member this login represents.');return;}
   if(!fbAuth){alert('Cloud authentication failed to initialize — reload and try again.');return;}
   if(!navigator.onLine){alert('Creating a user account needs an internet connection.');return;}
   const authEmail=resolveAuthEmail(mode,mode==='email'?email:username);
@@ -2937,7 +3192,7 @@ function editUser(uid){
   document.getElementById('user-password-hint').textContent='(can\'t be changed here — see note below)';
   document.getElementById('user-role').value=u.role;
   onUserRoleChange();
-  if(u.role==='Member')document.getElementById('user-linked-member').value=u.linkedMemberName||'';
+  if(isPortalRole(u.role))document.getElementById('user-linked-member').value=u.linkedMemberName||'';
   document.getElementById('user-edit-id').value=uid;
   document.getElementById('user-edit-note').style.display='block';
   document.querySelectorAll('#user-mode-toggle button').forEach(b=>b.disabled=true);
@@ -2949,8 +3204,8 @@ async function saveUserEdit(){
   const uid=document.getElementById('user-edit-id').value;if(!uid)return;
   const idx=users.findIndex(x=>x.uid===uid);if(idx===-1)return;
   const role=document.getElementById('user-role').value;
-  const linkedMemberName=role==='Member'?document.getElementById('user-linked-member').value:null;
-  if(role==='Member'&&!linkedMemberName){alert('Select which member this login represents.');return;}
+  const linkedMemberName=isPortalRole(role)?document.getElementById('user-linked-member').value:null;
+  if(isPortalRole(role)&&!linkedMemberName){alert('Select which member this login represents.');return;}
   if(users[idx].role==='Admin'&&role!=='Admin'){
     const otherAdmins=users.filter(u=>u.role==='Admin'&&u.active!==false&&u.uid!==uid);
     if(!otherAdmins.length){alert('Cannot change role — this is the last active Admin account.');return;}
@@ -2987,6 +3242,7 @@ async function removeUser(uid){
   users=users.filter(x=>x.uid!==uid);
   saveUsers();
   await deleteUserProfileCloud(uid);
+  deleteMemberStatement(uid); // v3.36.0 — their portal statement goes too
   renderUsersTable();
 }
 /* v3.32.3 — legacy (pre-v3.27.0, no Firebase uid) accounts had no controls at all. They only exist in
@@ -3025,17 +3281,17 @@ function renderUsersTable(){
     const isActive=u.active!==false;
     const isSelf=currentUser&&u.uid&&u.uid===currentUser.uid;
     const isLegacy=!u.uid;
-    h+=`<tr class="${isLegacy?'':'tr-hover'}" ${isLegacy?'':`onclick="editUser('${u.uid}')" title="Click to edit"`} style="${isLegacy?'':'cursor:pointer'}">
-      <td><strong>${u.username}</strong>${isSelf?' <span style="font-size:10px;color:#888780">(you)</span>':''}${u.mustChangePassword?' <span class="tag tag-amber" style="font-size:9px">Password change pending</span>':''}${isLegacy?' <span class="tag tag-amber" style="font-size:9px">Not migrated yet</span>':''}</td>
-      <td><span class="tag ${ROLE_COLORS[u.role]||'tag-amber'}">${u.role}</span></td>
-      <td style="font-size:12px">${u.linkedMemberName||'—'}</td>
+    h+=`<tr class="${isLegacy?'':'tr-hover'}" ${isLegacy?'':`onclick="editUser('${jsArg(u.uid)}')" title="Click to edit"`} style="${isLegacy?'':'cursor:pointer'}">
+      <td><strong>${esc(u.username)}</strong>${isSelf?' <span style="font-size:10px;color:#888780">(you)</span>':''}${u.mustChangePassword?' <span class="tag tag-amber" style="font-size:9px">Password change pending</span>':''}${isLegacy?' <span class="tag tag-amber" style="font-size:9px">Not migrated yet</span>':''}</td>
+      <td><span class="tag ${ROLE_COLORS[u.role]||'tag-amber'}">${esc(u.role)}</span></td>
+      <td style="font-size:12px">${esc(u.linkedMemberName||'—')}</td>
       <td>${isActive?'<span style="color:#3b6d11;font-size:12px">&#9679; Active</span>':'<span style="color:#a32d2d;font-size:12px">&#9679; Inactive</span>'}</td>
-      <td style="font-size:11px;color:#888780">${u.createdAt?u.createdAt.split('T')[0]:'—'}</td>
+      <td style="font-size:11px;color:#888780">${esc(u.createdAt?u.createdAt.split('T')[0]:'—')}</td>
       <td onclick="event.stopPropagation()">
-        ${isLegacy?`<div style="display:flex;gap:6px;align-items:center"><span style="font-size:11px;color:#888780">Upgrades on next login</span><button class="btn-danger" onclick="removeLegacyUser('${(u.username||'').replace(/'/g,"\\'")}')" style="padding:3px 7px;font-size:11px" title="Remove">&#128465;</button></div>`:`
+        ${isLegacy?`<div style="display:flex;gap:6px;align-items:center"><span style="font-size:11px;color:#888780">Upgrades on next login</span><button class="btn-danger" onclick="removeLegacyUser('${jsArg(u.username||'')}')" style="padding:3px 7px;font-size:11px" title="Remove">&#128465;</button></div>`:`
         <div style="display:flex;gap:4px">
-          <button onclick="toggleUserActive('${u.uid}')" style="padding:3px 8px;font-size:11px" title="${isActive?'Deactivate':'Activate'}">${isActive?'⏸ Deactivate':'▶ Activate'}</button>
-          <button class="btn-danger" onclick="removeUser('${u.uid}')" style="padding:3px 7px;font-size:11px" title="Remove">&#128465;</button>
+          <button onclick="toggleUserActive('${jsArg(u.uid)}')" style="padding:3px 8px;font-size:11px" title="${isActive?'Deactivate':'Activate'}">${isActive?'⏸ Deactivate':'▶ Activate'}</button>
+          <button class="btn-danger" onclick="removeUser('${jsArg(u.uid)}')" style="padding:3px 7px;font-size:11px" title="Remove">&#128465;</button>
         </div>`}
       </td>
     </tr>`;
@@ -3051,13 +3307,13 @@ function renderRolePermissionsGrid(){
     const subsHtml=p.subs?p.subs.map(s=>`
       <label style="display:flex;align-items:center;gap:6px;cursor:pointer;margin:4px 0 0 26px">
         <input type="checkbox" id="role-perm-${s.key}" class="role-sub-${p.key}" style="width:auto;cursor:pointer;accent-color:#1d6f42" onchange="onRoleSubToggle('${p.key}')"/>
-        <span style="font-size:11px;color:#5f5e5a">${s.label}</span>
+        <span style="font-size:11px;color:#5f5e5a">${esc(s.label)}</span>
       </label>`).join(''):'';
     return `<div style="background:#f4f4f2;border-radius:8px;padding:10px 12px">
       <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;margin:0">
         <input type="checkbox" id="role-perm-${p.key}" style="width:auto;margin-top:2px;cursor:pointer;accent-color:#1d6f42" ${p.subs?`onchange="onRoleParentToggle('${p.key}')"`:''}/>
         <span>
-          <div style="font-weight:600;font-size:12px">${p.label}</div>
+          <div style="font-weight:600;font-size:12px">${esc(p.label)}</div>
           <div style="font-size:11px;color:#888780">${p.desc}</div>
         </span>
       </label>
@@ -3177,13 +3433,37 @@ function memberPortalSummary(){
   const on=MEMBER_PORTAL_DEFS.filter(d=>c[d.key]).map(d=>d.label);
   return 'View-only member portal — own records only. Sees: '+(on.length?on.join(', '):'only their name (nothing else enabled)')+'.';
 }
+function removeMemberRole(){
+  if(!hasPermission('users')){alert('Access denied — restricted for your role.');return;}
+  const assigned=users.filter(u=>u.role==='Member');
+  if(assigned.length){alert('Cannot delete the Member role — '+assigned.length+' user'+(assigned.length!==1?'s are':' is')+' still assigned to it ('+assigned.map(u=>u.username).join(', ')+'). Reassign them to another role in Users & Access first.');return;}
+  if(!confirm('Delete the built-in Member role?\n\nIt is the view-only portal role. Once deleted you can create your own role named "Member" (or anything else) below and tick exactly the sections it should access. The Member portal access settings will no longer apply.\n\nYou can restore the built-in role later if no custom role is using the name "Member".'))return;
+  memberRoleRemoved=true;
+  saveUsers();syncUserRoleDropdown();renderRolesTable();
+  setStatus('Built-in Member role deleted — you can now create your own.');
+}
+function restoreMemberRole(){
+  if(!hasPermission('users')){alert('Access denied — restricted for your role.');return;}
+  if(customRoles.some(r=>r.name.toLowerCase()==='member')){alert('A custom role named "Member" exists. Rename or delete it before restoring the built-in Member role.');return;}
+  const holders=users.filter(u=>u.role==='Member');
+  if(!confirm('Restore the built-in view-only Member role?'+(holders.length?'\n\n'+holders.length+' user(s) currently on a role named "Member" will become view-only portal users and need a linked member.':'')))return;
+  memberRoleRemoved=false;
+  saveUsers();syncUserRoleDropdown();renderRolesTable();
+  setStatus('Built-in Member role restored.');
+}
 function renderMemberPortalSettingsCard(){
   const wrap=document.getElementById('member-portal-settings-wrap');if(!wrap)return;
+  if(memberRoleRemoved){
+    const blocked=customRoles.some(r=>r.name.toLowerCase()==='member');
+    wrap.innerHTML='<div class="card"><div class="card-title">Member portal access</div><div style="font-size:12px;color:#5f5e5a;line-height:1.6;margin-bottom:10px">The built-in view-only Member role has been deleted, so the portal settings are switched off. Create your own role above to give people the access you want.</div>'
+      +(blocked?'<div class="hint">To restore the built-in role, first rename or delete your custom role named "Member".</div>':'<button onclick="restoreMemberRole()">Restore built-in Member role</button>')+'</div>';
+    return;
+  }
   const cur=getMemberPortalSettings();
   wrap.innerHTML='<div class="card" id="member-portal-card"><div class="card-title">Member portal access</div>'
     +'<div style="font-size:12px;color:#5f5e5a;line-height:1.6;margin-bottom:10px">Choose which parts of their own account users with the <strong>Member</strong> role can see. This applies to every Member, and they only ever see their own records. It controls what the portal displays — it is not a database-level restriction.</div>'
     +'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:8px;margin-bottom:12px">'
-    +MEMBER_PORTAL_DEFS.map(d=>`<label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;margin:0;background:#f4f4f2;border-radius:8px;padding:10px 12px"><input type="checkbox" id="mp-${d.key}" ${cur[d.key]?'checked':''} style="width:auto;margin-top:2px;cursor:pointer;accent-color:#1d6f42"/><span><div style="font-weight:600;font-size:12px">${d.label}</div><div style="font-size:11px;color:#888780">${d.desc}</div></span></label>`).join('')
+    +MEMBER_PORTAL_DEFS.map(d=>`<label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;margin:0;background:#f4f4f2;border-radius:8px;padding:10px 12px"><input type="checkbox" id="mp-${d.key}" ${cur[d.key]?'checked':''} style="width:auto;margin-top:2px;cursor:pointer;accent-color:#1d6f42"/><span><div style="font-weight:600;font-size:12px">${esc(d.label)}</div><div style="font-size:11px;color:#888780">${d.desc}</div></span></label>`).join('')
     +'</div><div style="display:flex;gap:8px"><button class="btn-primary" onclick="saveMemberPortalSettings()">Save member access</button><button onclick="resetMemberPortalSettings()">Reset to all on</button></div></div>';
 }
 function focusMemberPortalCard(){
@@ -3209,13 +3489,13 @@ function resetMemberPortalSettings(){
 function summarizeRoleAccess(perms){
   const parts=PERMISSION_DEFS.map(p=>{
     if(!p.subs){
-      return perms[p.key]?`<span class="tag tag-green" style="font-size:9px;margin:1px 2px 1px 0">${p.label}</span>`:'';
+      return perms[p.key]?`<span class="tag tag-green" style="font-size:9px;margin:1px 2px 1px 0">${esc(p.label)}</span>`:'';
     }
     const total=p.subs.length;
     const enabled=p.subs.filter(s=>perms[s.key]).length;
     if(enabled===0)return '';
-    if(enabled===total)return `<span class="tag tag-green" style="font-size:9px;margin:1px 2px 1px 0">${p.label}</span>`;
-    return `<span class="tag tag-amber" style="font-size:9px;margin:1px 2px 1px 0" title="Partial access">${p.label} ${enabled}/${total}</span>`;
+    if(enabled===total)return `<span class="tag tag-green" style="font-size:9px;margin:1px 2px 1px 0">${esc(p.label)}</span>`;
+    return `<span class="tag tag-amber" style="font-size:9px;margin:1px 2px 1px 0" title="Partial access">${esc(p.label)} ${enabled}/${total}</span>`;
   }).filter(Boolean).join('');
   return parts||'<span style="color:#c4c2bc;font-size:11px">No access</span>';
 }
@@ -3227,7 +3507,7 @@ function renderRolesTable(){
   ['Admin','Manager'].forEach(name=>{
     const perms=BUILTIN_ROLE_PERMISSIONS[name];
     rows.push(`<tr>
-      <td><strong>${name}</strong></td>
+      <td><strong>${esc(name)}</strong></td>
       <td><span style="font-size:11px;color:#888780">Built-in</span></td>
       <td style="font-size:12px;line-height:1.9">${summarizeRoleAccess(perms)}</td>
       <td></td>
@@ -3237,23 +3517,25 @@ function renderRolesTable(){
   // PERMISSION_DEFS section/subsection grid the other roles use — it's a separate view-only
   // portal for a single linked member's own statement — so it can't run through
   // summarizeRoleAccess() and needs its own plain-English description here instead.
-  const memberCount=users.filter(u=>u.role==='Member').length;
-  rows.push(`<tr>
+  if(!memberRoleRemoved){
+    const memberCount=users.filter(u=>u.role==='Member').length;
+    rows.push(`<tr>
     <td><strong>Member</strong></td>
     <td><span style="font-size:11px;color:#888780">Built-in</span>${memberCount?' <span style="font-size:10px;color:#888780">('+memberCount+' user'+(memberCount!==1?'s':'')+')</span>':''}</td>
     <td style="font-size:12px;color:#5f5e5a">${memberPortalSummary()}</td>
-    <td><button onclick="focusMemberPortalCard()" style="padding:3px 7px;font-size:11px" title="Edit what Members can see">&#9998;</button></td>
+    <td><div style="display:flex;gap:4px"><button onclick="focusMemberPortalCard()" style="padding:3px 7px;font-size:11px" title="Edit what Members can see">&#9998;</button><button class="btn-danger" onclick="removeMemberRole()" style="padding:3px 7px;font-size:11px" title="Delete the built-in Member role so you can create your own">&#128465;</button></div></td>
   </tr>`);
+  }
   customRoles.forEach(r=>{
     const inUseCount=users.filter(u=>u.role===r.name).length;
     rows.push(`<tr>
-      <td><strong>${r.name}</strong></td>
+      <td><strong>${esc(r.name)}</strong></td>
       <td><span style="font-size:11px;color:#c9a227">Custom</span>${inUseCount?' <span style="font-size:10px;color:#888780">('+inUseCount+' user'+(inUseCount!==1?'s':'')+')</span>':''}</td>
       <td style="font-size:12px;line-height:1.9">${summarizeRoleAccess(r.permissions)}</td>
       <td>
         <div style="display:flex;gap:4px">
-          <button onclick="editRole(${r.id})" style="padding:3px 7px;font-size:11px">&#9998;</button>
-          <button class="btn-danger" onclick="removeRole(${r.id})" style="padding:3px 7px;font-size:11px">&#128465;</button>
+          <button onclick="editRole(${jsNum(r.id)})" style="padding:3px 7px;font-size:11px">&#9998;</button>
+          <button class="btn-danger" onclick="removeRole(${jsNum(r.id)})" style="padding:3px 7px;font-size:11px">&#128465;</button>
         </div>
       </td>
     </tr>`);
@@ -3315,6 +3597,22 @@ function forceRaw(textId,rawId){
 /* ── helpers ── */
 function getCurrency(){return document.getElementById('currency').value;}
 function getNav(){return parseFloat(document.getElementById('init-nav').value)||1000;}
+/* v3.36.0 — SECURITY: HTML-escaping helpers. Every piece of user- or cloud-supplied text
+   (names, notes, descriptions, account/asset/broker names, usernames, dates, ids) that goes into
+   an innerHTML template must pass through one of these, so a stored value like
+   `<img src=x onerror=...>` renders as text instead of running in another user's session.
+   esc()   — text or attribute value inside HTML.
+   jsArg() — a value placed inside a '...' JS string within an inline handler, e.g.
+             onclick="foo('${jsArg(name)}')" (JS-escapes first, then HTML-escapes).
+   jsNum() — a record id placed unquoted in an inline handler; anything non-numeric becomes null. */
+function esc(s){
+  if(s===null||s===undefined) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+function jsArg(s){
+  return esc(String(s===null||s===undefined?'':s).replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/\r?\n/g,'\\n').replace(/[\u2028\u2029]/g,''));
+}
+function jsNum(v){ const n=Number(v); return Number.isFinite(n)?n:'null'; }
 function fmt(n){return getCurrency()+Number(n).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});}
 function fmtU(n){return Number(n).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});}
 function initials(n){return n.split(' ').map(w=>w[0]||'').join('').toUpperCase().slice(0,2);}
@@ -3487,7 +3785,7 @@ function syncCOAParentDropdown(excludeCode){
   let opts='<option value="">— Top level (no parent) —</option>';
   getAllAccounts().forEach(a=>{
     if(excludeCode&&(a.code===excludeCode||isDescendantOf(a.code,excludeCode)))return;
-    opts+=`<option value="${a.code}">${a.code} — ${a.name}</option>`;
+    opts+=`<option value="${esc(a.code)}">${esc(a.code)} — ${esc(a.name)}</option>`;
   });
   sel.innerHTML=opts;
   if(cur&&[...sel.options].some(o=>o.value===cur))sel.value=cur;
@@ -3638,14 +3936,14 @@ function renderCOATable(){
     const bal=kids.length?rollup(a.code):getAccountBalance(a.code,null);
     const normalSide=isDebitNormal(a.code)?'Debit':'Credit';
     const canDelete=!a.builtin&&kids.length===0;
-    h+=`<tr style="cursor:pointer" onclick="editCOAAccount('${a.code}')" onmouseover="this.style.background='#f4f4f2'" onmouseout="this.style.background=''">
-      <td style="font-weight:600;color:#0c447c">${a.code}${a.builtin?' <span title="Built-in account — code and type are locked" style="font-size:11px">&#128274;</span>':''}</td>
-      <td style="padding-left:${8+depth*18}px">${depth>0?'&#8627; ':''}${a.name}${kids.length?' <span style="font-size:10px;color:#888780">(group total)</span>':''}</td>
-      <td><span class="tag tag-purple" style="font-size:10px">${a.type}</span></td>
+    h+=`<tr style="cursor:pointer" onclick="editCOAAccount('${jsArg(a.code)}')" onmouseover="this.style.background='#f4f4f2'" onmouseout="this.style.background=''">
+      <td style="font-weight:600;color:#0c447c">${esc(a.code)}${a.builtin?' <span title="Built-in account — code and type are locked" style="font-size:11px">&#128274;</span>':''}</td>
+      <td style="padding-left:${8+depth*18}px">${depth>0?'&#8627; ':''}${esc(a.name)}${kids.length?' <span style="font-size:10px;color:#888780">(group total)</span>':''}</td>
+      <td><span class="tag tag-purple" style="font-size:10px">${esc(a.type)}</span></td>
       <td style="font-size:12px;color:#5f5e5a">${normalSide}</td>
       <td class="num">${bal?fmt(Math.abs(bal))+(bal<0?' (cr)':''):'—'}</td>
-      <td style="font-size:12px;color:#5f5e5a">${a.note?a.note:'<span style="color:#c4c2bc">—</span>'}</td>
-      <td onclick="event.stopPropagation()">${canDelete?`<button class="btn-danger" onclick="removeCustomAccount('${a.code}')" style="padding:3px 7px;font-size:11px">&#128465;</button>`:''}</td>
+      <td style="font-size:12px;color:#5f5e5a">${a.note?esc(a.note):'<span style="color:#c4c2bc">—</span>'}</td>
+      <td onclick="event.stopPropagation()">${canDelete?`<button class="btn-danger" onclick="removeCustomAccount('${jsArg(a.code)}')" style="padding:3px 7px;font-size:11px">&#128465;</button>`:''}</td>
     </tr>`;
     kids.forEach(c=>renderRow(c,depth+1));
   }
@@ -3703,8 +4001,9 @@ function rebuildJournalFromHistory(){
 
 /* ── persist ── */
 function save(){
+  if(portalStatement) return; // v3.36.0 — the read-only Member portal never writes fund data
   const data={deposits,withdrawals,portfolioItems,purchases,brokerRegistry,assetTypeRegistry,
-    navValuations,profitRounds,kycData,membersRegistry,transfers,sales,incomeRecords,
+    navValuations,profitRounds,membersRegistry,transfers,sales,incomeRecords, // v3.36.0: KYC is cloud-only (funds/{fundId}/kyc/records), never cached in inv_club_v2
     journalEntries,corporateActions,customAccounts,coaOverrides,fundLaunchNav,allocationTargets,allocationHistory,
     stockHoldings,stockTxns,stockDividends,projectionAssumptions,_v27:true,
     settings:{fundName:document.getElementById('fund-name').value,currency:getCurrency(),
@@ -3719,7 +4018,9 @@ function load(){
       const d=JSON.parse(raw);
       deposits=d.deposits||[];withdrawals=d.withdrawals||[];portfolioItems=d.portfolioItems||[];
       purchases=d.purchases||[];brokerRegistry=d.brokerRegistry||[];assetTypeRegistry=d.assetTypeRegistry||[];
-      navValuations=d.navValuations||[];profitRounds=d.profitRounds||[];kycData=d.kycData||{};
+      navValuations=d.navValuations||[];profitRounds=d.profitRounds||[];
+      // v3.36.0 — KYC is no longer cached on the device. Scrub any copy an older version left behind.
+      if(d.kycData!==undefined){ delete d.kycData; try{localStorage.setItem(LS_KEY,JSON.stringify(d));}catch(e){} }
       membersRegistry=d.membersRegistry||[];transfers=d.transfers||[];
       sales=d.sales||[];incomeRecords=d.incomeRecords||[];
       journalEntries=d.journalEntries||[];corporateActions=d.corporateActions||[];customAccounts=d.customAccounts||[];
@@ -3734,7 +4035,7 @@ function load(){
       if(!d._v27){
         brokerRegistry=[];assetTypeRegistry=[];
         const fixed={deposits,withdrawals,portfolioItems,purchases,brokerRegistry,assetTypeRegistry,
-          navValuations,profitRounds,kycData,membersRegistry,transfers,sales,incomeRecords,
+          navValuations,profitRounds,membersRegistry,transfers,sales,incomeRecords,
           journalEntries,corporateActions,customAccounts,
           settings:d.settings||{},_v27:true};
         localStorage.setItem(LS_KEY,JSON.stringify(fixed));
@@ -3799,7 +4100,9 @@ function clearAllData(){
   updateNavDisplay();renderAll();setStatus('All data cleared');
 }
 function exportJSON(){
-  const data={deposits,withdrawals,portfolioItems,purchases,brokerRegistry,assetTypeRegistry,navValuations,profitRounds,kycData,membersRegistry,transfers,sales,incomeRecords,journalEntries,corporateActions,customAccounts,coaOverrides,fundLaunchNav,allocationTargets,allocationHistory,stockHoldings,stockTxns,stockDividends,projectionAssumptions,settings:{fundName:document.getElementById('fund-name').value,currency:getCurrency(),nav:document.getElementById('init-nav').value,startDate:document.getElementById('fund-start').value},exportedAt:new Date().toISOString()};
+  // v3.36.0 — backups no longer contain KYC (next-of-kin and bank details). KYC lives only in
+  // funds/{fundId}/kyc/records, readable by Admin and roles holding the KYC permission.
+  const data={deposits,withdrawals,portfolioItems,purchases,brokerRegistry,assetTypeRegistry,navValuations,profitRounds,membersRegistry,transfers,sales,incomeRecords,journalEntries,corporateActions,customAccounts,coaOverrides,fundLaunchNav,allocationTargets,allocationHistory,stockHoldings,stockTxns,stockDividends,projectionAssumptions,settings:{fundName:document.getElementById('fund-name').value,currency:getCurrency(),nav:document.getElementById('init-nav').value,startDate:document.getElementById('fund-start').value},exportedAt:new Date().toISOString()};
   const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);
   const fn=(document.getElementById('fund-name').value||'investment_club').replace(/[^a-z0-9]/gi,'_').toLowerCase();
@@ -3832,7 +4135,11 @@ function importJSON(){
       assetTypeRegistry=d.assetTypeRegistry||[];
       navValuations=d.navValuations||[];
       profitRounds=d.profitRounds||[];
-      kycData=d.kycData||{};
+      // v3.36.0 — KYC in an older backup is not loaded into fund data; it can be restored straight to
+      // the cloud KYC store by someone holding the KYC permission (existing cloud records win).
+      if(d.kycData&&Object.keys(d.kycData).length&&canUseKYC()&&confirm('This backup also contains KYC records for '+Object.keys(d.kycData).length+' member(s). Restore any that are missing from the cloud KYC store?')){
+        restoreKYCFromBackup(d.kycData);
+      }
       membersRegistry=d.membersRegistry||[];
       transfers=d.transfers||[];
       sales=d.sales||[];
@@ -4244,6 +4551,7 @@ function removeMemberReg(id){
   const m=membersRegistry.find(x=>x.id===id);
   if(m && kycData[m.name]){
     delete kycData[m.name];
+    deleteKYCRecordCloud(m.name); // v3.36.0
   }
   membersRegistry=membersRegistry.filter(m=>m.id!==id);
   save();renderMemberRegistry();syncAllMemberDropdowns();
@@ -4261,16 +4569,16 @@ function renderMemberRegistry(){
     const active=m.active!==false;
     const rowSt=active?'cursor:pointer':'cursor:pointer;color:#aaa9a4';
     const nameSt=active?'font-weight:600':'font-weight:600;color:#b4b2a9;text-decoration:line-through';
-    h+=`<tr style="${rowSt}" onclick="editMemberReg(${m.id})" onmouseover="this.style.background='#f4f4f2'" onmouseout="this.style.background=''">
-      <td style="font-size:11px;font-weight:600;color:${active?'#0c447c':'#b4b2a9'}">${m.memberId||'—'}</td>
-      <td><span style="${nameSt}">${m.name}</span></td>
-      <td style="font-size:12px;color:${m.email?'#5f5e5a':'#c4c2bc'}">${m.email||'— none on file —'}</td>
-      <td>${m.dateJoined}</td>
+    h+=`<tr style="${rowSt}" onclick="editMemberReg(${jsNum(m.id)})" onmouseover="this.style.background='#f4f4f2'" onmouseout="this.style.background=''">
+      <td style="font-size:11px;font-weight:600;color:${active?'#0c447c':'#b4b2a9'}">${esc(m.memberId||'—')}</td>
+      <td><span style="${nameSt}">${esc(m.name)}</span></td>
+      <td style="font-size:12px;color:${m.email?'#5f5e5a':'#c4c2bc'}">${esc(m.email||'— none on file —')}</td>
+      <td>${esc(m.dateJoined)}</td>
       <td style="text-align:center" onclick="event.stopPropagation()">
-        <input type="checkbox" ${active?'checked':''} onchange="toggleMemberActive(${m.id},this.checked)" style="width:auto;cursor:pointer;accent-color:#1d6f42"/>
+        <input type="checkbox" ${active?'checked':''} onchange="toggleMemberActive(${jsNum(m.id)},this.checked)" style="width:auto;cursor:pointer;accent-color:#1d6f42"/>
       </td>
       <td onclick="event.stopPropagation()">
-        <button class="btn-danger" onclick="removeMemberReg(${m.id})" style="padding:3px 7px;font-size:11px">&#128465;</button>
+        <button class="btn-danger" onclick="removeMemberReg(${jsNum(m.id)})" style="padding:3px 7px;font-size:11px">&#128465;</button>
       </td>
     </tr>`;
   });
@@ -4281,7 +4589,7 @@ function syncAllMemberDropdowns(){
   const depNames=[...new Set(deposits.map(d=>d.member))].filter(n=>!names.includes(n));
   const allNames=[...names,...depNames];
   const dl=document.getElementById('member-list');
-  if(dl) dl.innerHTML=allNames.map(n=>`<option value="${n}">`).join('');
+  if(dl) dl.innerHTML=allNames.map(n=>`<option value="${esc(n)}">`).join('');
   const kycSel=document.getElementById('kyc-member-select');
   if(kycSel){
     const cur=kycSel.value;
@@ -4376,7 +4684,7 @@ function renderWithdrawalLedger(){
   const el=document.getElementById('wdw-ledger-wrap');if(!el)return;
   const allNames=membersRegistry.filter(m=>m.active!==false).map(m=>m.name);
   const dlw=document.getElementById('member-list-wdw');
-  if(dlw) dlw.innerHTML=allNames.map(n=>`<option value="${n}">`).join('');
+  if(dlw) dlw.innerHTML=allNames.map(n=>`<option value="${esc(n)}">`).join('');
   const currentNAV=getCurrentNAV();
   const nl=document.getElementById('wdw-nav-label');
   if(nl) nl.textContent=getCurrency()+currentNAV.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
@@ -4409,30 +4717,30 @@ function renderWithdrawalLedger(){
     const pending=isPendingUnitized(d);
     let navCell,unitsCellW;
     if(pending){
-      navCell=`<span class="tag tag-amber" style="font-size:10px" title="Will be priced at the ${d.applicableValuationDate||'scheduled'} valuation">Pending</span>`;
-      unitsCellW=`<span style="color:#c9a227;font-size:11px">awaits ${d.applicableValuationDate||'—'}</span>`;
+      navCell=`<span class="tag tag-amber" style="font-size:10px" title="Will be priced at the ${esc(d.applicableValuationDate||'scheduled')} valuation">Pending</span>`;
+      unitsCellW=`<span style="color:#c9a227;font-size:11px">awaits ${esc(d.applicableValuationDate||'—')}</span>`;
     } else {
       const currentApplicableNav=getNavAtDate(d.date);
       const navDiffers=Math.abs(d.nav-currentApplicableNav)>0.0001;
       navCell=navDiffers
-        ?`${fmt(d.nav)} <span style="font-size:10px;color:#c9a227" title="Applicable NAV on ${d.date} was ${getCurrency()}${currentApplicableNav.toFixed(4)}">&#9432;</span>`
+        ?`${fmt(d.nav)} <span style="font-size:10px;color:#c9a227" title="Applicable NAV on ${esc(d.date)} was ${getCurrency()}${currentApplicableNav.toFixed(4)}">&#9432;</span>`
         :fmt(d.nav);
       unitsCellW=`-${fmtU(d.units)}`;
     }
     const rowBg=isLocked?'#fafaf8':isEd?'#feecec':'';
-    const lockBtn=`<span class="lock-icon" onclick="toggleWithdrawalLock(${d.id},event)" title="${isLocked?'Locked — click to unlock':'Unlocked — click to lock'}">${isLocked?'🔒':'🔓'}</span>`;
+    const lockBtn=`<span class="lock-icon" onclick="toggleWithdrawalLock(${jsNum(d.id)},event)" title="${isLocked?'Locked — click to unlock':'Unlocked — click to lock'}">${isLocked?'🔒':'🔓'}</span>`;
     rows+=`<tr style="cursor:${isLocked?'default':'pointer'};background:${rowBg};${isLocked?'opacity:.8':''}" title="${isLocked?'Locked':'Click to edit'}"
-      onclick="${isLocked?'void 0':'editWithdrawal('+d.id+')'}"
+      onclick="${isLocked?'void 0':'editWithdrawal('+jsNum(d.id)+')'}"
       onmouseover="this.style.background='${isLocked?rowBg:isEd?'#fddcdc':'#f4f4f2'}'"
       onmouseout="this.style.background='${rowBg}'">
       <td onclick="event.stopPropagation()" style="padding:4px 6px">${lockBtn}</td>
-      <td style="${isLocked?'color:#aaa9a4':''}">${d.date}</td>
+      <td style="${isLocked?'color:#aaa9a4':''}">${esc(d.date)}</td>
       <td style="font-size:11px;font-weight:600;color:${isLocked?'#c4c2bc':'#0c447c'}">${memberId}</td>
-      <td><strong style="${isLocked?'color:#aaa9a4':''}">${d.member}</strong></td>
+      <td><strong style="${isLocked?'color:#aaa9a4':''}">${esc(d.member)}</strong></td>
       <td class="num" style="color:${isLocked?'#bbb':'#a32d2d'};font-weight:500">-${fmt(d.amount)}</td>
       <td class="num" style="font-size:12px;${isLocked?'color:#bbb9b3':''}">${navCell}</td>
       <td class="num" style="color:${isLocked?'#bbb':'#a32d2d'}">${unitsCellW}</td>
-      <td onclick="event.stopPropagation()">${isLocked?'<span style="font-size:12px;color:#c4c2bc">—</span>':'<button class="btn-danger" onclick="removeWithdrawal('+d.id+')" style="padding:3px 7px;font-size:11px">&#128465;</button>'}</td>
+      <td onclick="event.stopPropagation()">${isLocked?'<span style="font-size:12px;color:#c4c2bc">—</span>':'<button class="btn-danger" onclick="removeWithdrawal('+jsNum(d.id)+')" style="padding:3px 7px;font-size:11px">&#128465;</button>'}</td>
     </tr>`;
   });
   el.innerHTML=
@@ -4478,12 +4786,12 @@ function renderOwnership(){
     const amtColor=m.netAmount>=0?'#1a1a18':'#a32d2d';
     const unitColor=m.netUnits>=0?'#1a1a18':'#a32d2d';
     h+=`<tr style="cursor:pointer" id="orow-${i}" data-sel="0"
-      onclick="toggleOwnershipDetail(${i},'${m.name.replace(/'/g,"\\'")}',${summary.length})"
+      onclick="toggleOwnershipDetail(${i},'${jsArg(m.name)}',${summary.length})"
       onmouseover="if(this.dataset.sel!=='1')this.style.background='#f4f4f2'"
       onmouseout="if(this.dataset.sel!=='1')this.style.background=''">
       <td style="color:#888780;font-size:10px" id="oarrow-${i}">&#9658;</td>
-      <td style="font-size:11px;font-weight:600;color:#0c447c">${m.memberId}</td>
-      <td><strong>${m.name}</strong></td>
+      <td style="font-size:11px;font-weight:600;color:#0c447c">${esc(m.memberId)}</td>
+      <td><strong>${esc(m.name)}</strong></td>
       <td class="num" style="color:${amtColor};font-weight:600">${fmt(m.netAmount)}</td>
       <td class="num" style="color:${unitColor};font-weight:600">${fmtU(m.netUnits)}</td>
     </tr>
@@ -4531,7 +4839,7 @@ function injectOwnershipDetail(idx,name){
   const th='<th style="text-align:left;padding:5px 6px;border-bottom:0.5px solid #d3d1c7;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:#888780';
   const thr='<th style="text-align:right;padding:5px 6px;border-bottom:0.5px solid #d3d1c7;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:#888780';
   let inner='<div style="padding:10px 16px 14px 28px">'
-    +'<div style="font-size:11px;font-weight:600;color:#888780;text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px">Transactions — '+name+'</div>'
+    +'<div style="font-size:11px;font-weight:600;color:#888780;text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px">Transactions — '+esc(name)+'</div>'
     +'<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr>'
     +th+';width:88px">Date</th>'
     +th+';width:106px">Transaction</th>'
@@ -4547,8 +4855,8 @@ function injectOwnershipDetail(idx,name){
     const amtCell=t.type.startsWith('Transfer')?'—':px+fmt(t.amount);
     const navCell=t.type.startsWith('Transfer')?'—':fmt(t.nav);
     inner+=`<tr>
-      <td style="padding:5px 6px;border-bottom:0.5px solid #e8e6df">${t.date}</td>
-      <td style="padding:5px 6px;border-bottom:0.5px solid #e8e6df"><span style="display:inline-block;font-size:10px;padding:2px 7px;border-radius:6px;font-weight:600;${badgeSt}">${t.type}</span>${lockBadge}</td>
+      <td style="padding:5px 6px;border-bottom:0.5px solid #e8e6df">${esc(t.date)}</td>
+      <td style="padding:5px 6px;border-bottom:0.5px solid #e8e6df"><span style="display:inline-block;font-size:10px;padding:2px 7px;border-radius:6px;font-weight:600;${badgeSt}">${esc(t.type)}</span>${lockBadge}</td>
       <td style="text-align:right;padding:5px 6px;border-bottom:0.5px solid #e8e6df;font-variant-numeric:tabular-nums;color:${ac};font-weight:500">${amtCell}</td>
       <td style="text-align:right;padding:5px 6px;border-bottom:0.5px solid #e8e6df;font-variant-numeric:tabular-nums">${navCell}</td>
       <td style="text-align:right;padding:5px 6px;border-bottom:0.5px solid #e8e6df;font-variant-numeric:tabular-nums;color:${ac}">${px}${fmtU(t.units)}</td>
@@ -4623,12 +4931,12 @@ function renderBrokerRegister(){
     +'<th style="width:90px">Code</th><th>Note</th><th style="width:44px"></th>'
     +'</tr></thead><tbody>';
   brokerRegistry.forEach((b,i)=>{
-    h+=`<tr style="cursor:pointer" onclick="editBroker(${b.id})" onmouseover="this.style.background='#f4f4f2'" onmouseout="this.style.background=''">
+    h+=`<tr style="cursor:pointer" onclick="editBroker(${jsNum(b.id)})" onmouseover="this.style.background='#f4f4f2'" onmouseout="this.style.background=''">
       <td style="color:#888780">${i+1}</td>
-      <td><strong>${b.name}</strong></td>
-      <td style="font-size:11px;font-weight:600;color:#0c447c">${b.code}</td>
-      <td>${b.note||'—'}</td>
-      <td onclick="event.stopPropagation()"><button class="btn-danger" onclick="removeBroker(${b.id})" style="padding:3px 7px;font-size:11px">&#128465;</button></td>
+      <td><strong>${esc(b.name)}</strong></td>
+      <td style="font-size:11px;font-weight:600;color:#0c447c">${esc(b.code)}</td>
+      <td>${esc(b.note||'—')}</td>
+      <td onclick="event.stopPropagation()"><button class="btn-danger" onclick="removeBroker(${jsNum(b.id)})" style="padding:3px 7px;font-size:11px">&#128465;</button></td>
     </tr>`;
   });
   wrap.innerHTML=h+'</tbody></table></div>';
@@ -4697,12 +5005,12 @@ function renderAssetTypeRegister(){
     +'<th style="width:90px">Code</th><th>Note</th><th style="width:44px"></th>'
     +'</tr></thead><tbody>';
   assetTypeRegistry.forEach((a,i)=>{
-    h+=`<tr style="cursor:pointer" onclick="editAssetType(${a.id})" onmouseover="this.style.background='#f4f4f2'" onmouseout="this.style.background=''">
+    h+=`<tr style="cursor:pointer" onclick="editAssetType(${jsNum(a.id)})" onmouseover="this.style.background='#f4f4f2'" onmouseout="this.style.background=''">
       <td style="color:#888780">${i+1}</td>
-      <td><strong>${a.name}</strong></td>
-      <td style="font-size:11px;font-weight:600;color:#3c3489">${a.code}</td>
-      <td>${a.note||'—'}</td>
-      <td onclick="event.stopPropagation()"><button class="btn-danger" onclick="removeAssetType(${a.id})" style="padding:3px 7px;font-size:11px">&#128465;</button></td>
+      <td><strong>${esc(a.name)}</strong></td>
+      <td style="font-size:11px;font-weight:600;color:#3c3489">${esc(a.code)}</td>
+      <td>${esc(a.note||'—')}</td>
+      <td onclick="event.stopPropagation()"><button class="btn-danger" onclick="removeAssetType(${jsNum(a.id)})" style="padding:3px 7px;font-size:11px">&#128465;</button></td>
     </tr>`;
   });
   wrap.innerHTML=h+'</tbody></table></div>';
@@ -4956,14 +5264,14 @@ function renderPortfolioRegister(){
   const sortedItems=[...items].sort((a,b)=>dateSortCmp(a,b,portRegSortAsc));
   sortedItems.forEach(p=>{
     const typeLabel=getAssetLabelFull(p.assetType);
-    h+=`<tr style="cursor:pointer" onclick="editPortfolioItem(${p.id})" onmouseover="this.style.background='#f4f4f2'" onmouseout="this.style.background=''">
-      <td>${p.date}</td>
-      <td style="font-size:11px;font-weight:600;color:#0c447c">${p.assetId}</td>
-      <td><span class="tag tag-purple">${typeLabel}</span></td>
-      <td>${p.broker||'—'}</td>
+    h+=`<tr style="cursor:pointer" onclick="editPortfolioItem(${jsNum(p.id)})" onmouseover="this.style.background='#f4f4f2'" onmouseout="this.style.background=''">
+      <td>${esc(p.date)}</td>
+      <td style="font-size:11px;font-weight:600;color:#0c447c">${esc(p.assetId)}</td>
+      <td><span class="tag tag-purple">${esc(typeLabel)}</span></td>
+      <td>${esc(p.broker||'—')}</td>
       <td style="font-size:12px">${p.defaultSettleAccount?getAccountName(p.defaultSettleAccount):'<span style="color:#c4c2bc">—</span>'}</td>
-      <td>${p.description||'—'}</td>
-      <td onclick="event.stopPropagation()"><button class="btn-danger" onclick="removePortfolioItem(${p.id})" style="padding:3px 7px;font-size:11px">&#128465;</button></td>
+      <td>${esc(p.description||'—')}</td>
+      <td onclick="event.stopPropagation()"><button class="btn-danger" onclick="removePortfolioItem(${jsNum(p.id)})" style="padding:3px 7px;font-size:11px">&#128465;</button></td>
     </tr>`;
   });
   wrap.innerHTML=h+'</tbody></table></div>';
@@ -5136,17 +5444,17 @@ function renderPurchaseLedger(){
     total+=p.amount;totalFee+=fee;
     const isEd=p.id===editingId;
     const typeLabel=getAssetLabelFull(p.assetType)||'—';
-    h+=`<tr style="cursor:pointer;${isEd?'background:#eaf6ef':''}" onclick="editPurchase(${p.id})"
+    h+=`<tr style="cursor:pointer;${isEd?'background:#eaf6ef':''}" onclick="editPurchase(${jsNum(p.id)})"
       onmouseover="this.style.background='${isEd?'#d6eedf':'#f4f4f2'}'"
       onmouseout="this.style.background='${isEd?'#eaf6ef':''}'" title="Click to edit">
-      <td>${p.date}</td>
-      <td style="font-size:11px;font-weight:600;color:#0c447c">${p.assetId}</td>
-      <td><span class="tag tag-purple">${typeLabel}</span></td>
-      <td>${p.broker||'—'}</td>
+      <td>${esc(p.date)}</td>
+      <td style="font-size:11px;font-weight:600;color:#0c447c">${esc(p.assetId)}</td>
+      <td><span class="tag tag-purple">${esc(typeLabel)}</span></td>
+      <td>${esc(p.broker||'—')}</td>
       <td class="num" style="font-weight:500">${fmt(p.amount)}</td>
       <td class="num" style="color:${fee?'#633806':'#c4c2bc'}">${fee?fmt(fee):'—'}</td>
       <td class="num" style="font-weight:600">${fmt(p.amount+fee)}</td>
-      <td onclick="event.stopPropagation()"><button class="btn-danger" onclick="removePurchase(${p.id})" style="padding:3px 7px;font-size:11px">&#128465;</button></td>
+      <td onclick="event.stopPropagation()"><button class="btn-danger" onclick="removePurchase(${jsNum(p.id)})" style="padding:3px 7px;font-size:11px">&#128465;</button></td>
     </tr>`;
   });
   h+=`<tr class="tfoot-row"><td colspan="4">Total</td><td class="num">${fmt(total)}</td><td class="num">${fmt(totalFee)}</td><td class="num">${fmt(total+totalFee)}</td><td></td></tr>`;
@@ -5197,7 +5505,7 @@ function updateMemberDatalist(){
   const depNames=[...new Set(deposits.map(d=>d.member))].filter(n=>!regNames.includes(n));
   const allNames=[...new Set([...regNames,...depNames])];
   const dl=document.getElementById('member-list');
-  if(dl) dl.innerHTML=allNames.map(n=>`<option value="${n}">`).join('');
+  if(dl) dl.innerHTML=allNames.map(n=>`<option value="${esc(n)}">`).join('');
 }
 
 /* ── transaction locking ── */
@@ -5279,11 +5587,11 @@ function previewDepositUnits(){
     if(v){
       if(amount>0){
         const units=amount/v.nav;
-        preview.innerHTML=`<span style="color:#3c3489">&#127919; Manually priced</span> at the <strong>${v.date}</strong> valuation, NAV <strong id="dep-nav-label">${getCurrency()}${v.nav.toLocaleString(undefined,{minimumFractionDigits:4,maximumFractionDigits:4})}</strong>
+        preview.innerHTML=`<span style="color:#3c3489">&#127919; Manually priced</span> at the <strong>${esc(v.date)}</strong> valuation, NAV <strong id="dep-nav-label">${getCurrency()}${v.nav.toLocaleString(undefined,{minimumFractionDigits:4,maximumFractionDigits:4})}</strong>
           &nbsp;&rarr;&nbsp; Units to be issued: <strong style="color:#3c3489">${fmtU(units)}</strong>.
           This bypasses the twice-monthly schedule for this deposit only.`;
       } else {
-        preview.innerHTML=`Will price at the <strong>${v.date}</strong> valuation, NAV <strong id="dep-nav-label">${getCurrency()}${v.nav.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}</strong>.`;
+        preview.innerHTML=`Will price at the <strong>${esc(v.date)}</strong> valuation, NAV <strong id="dep-nav-label">${getCurrency()}${v.nav.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}</strong>.`;
       }
     }
     return;
@@ -5298,11 +5606,11 @@ function previewDepositUnits(){
     const nav=existingVal.nav;
     if(amount>0){
       const units=amount/nav;
-      preview.innerHTML=`Prices at the <strong>${existingVal.date}</strong> valuation, NAV <strong id="dep-nav-label">${getCurrency()}${nav.toLocaleString(undefined,{minimumFractionDigits:4,maximumFractionDigits:4})}</strong>
+      preview.innerHTML=`Prices at the <strong>${esc(existingVal.date)}</strong> valuation, NAV <strong id="dep-nav-label">${getCurrency()}${nav.toLocaleString(undefined,{minimumFractionDigits:4,maximumFractionDigits:4})}</strong>
         &nbsp;&rarr;&nbsp; Units to be issued: <strong style="color:#0c447c">${fmtU(units)}</strong>
         &nbsp;(${getCurrency()}${amount.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})} &divide; ${getCurrency()}${nav.toLocaleString(undefined,{minimumFractionDigits:4,maximumFractionDigits:4})})`;
     } else {
-      preview.innerHTML=`Prices at the <strong>${existingVal.date}</strong> valuation, NAV <strong id="dep-nav-label">${getCurrency()}${nav.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}</strong>`;
+      preview.innerHTML=`Prices at the <strong>${esc(existingVal.date)}</strong> valuation, NAV <strong id="dep-nav-label">${getCurrency()}${nav.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}</strong>`;
     }
     return;
   }
@@ -5326,12 +5634,12 @@ function previewDepositUnits(){
       const units=amount/nav;
       preview.innerHTML=`<span style="color:#0c447c">&#9889; Priced immediately</span> at the last valuation NAV <strong id="dep-nav-label">${getCurrency()}${nav.toLocaleString(undefined,{minimumFractionDigits:4,maximumFractionDigits:4})}</strong>
         &nbsp;&rarr;&nbsp; Units to be issued: <strong style="color:#0c447c">${fmtU(units)}</strong>.
-        This subscription will <strong>not</strong> be re-priced at the ${valDate} valuation.`;
+        This subscription will <strong>not</strong> be re-priced at the ${esc(valDate)} valuation.`;
     } else {
       preview.innerHTML=`Will price immediately at the last valuation NAV <strong id="dep-nav-label">${getCurrency()}${nav.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}</strong>.`;
     }
   } else {
-    preview.innerHTML=`<span style="color:#c9a227">&#9203; Pending</span> — per the twice-monthly valuation rule, this deposit will be priced by the next valuation recorded on or after <strong>${valDate}</strong>. Units are issued then, not today. <span id="dep-nav-label"></span>`;
+    preview.innerHTML=`<span style="color:#c9a227">&#9203; Pending</span> — per the twice-monthly valuation rule, this deposit will be priced by the next valuation recorded on or after <strong>${esc(valDate)}</strong>. Units are issued then, not today. <span id="dep-nav-label"></span>`;
   }
 }
 
@@ -5355,7 +5663,7 @@ function checkDepNavStaleness(){
   const existingVal=findValuationForRecord(depDate,valDate);
 
   if(!existingVal){
-    msg.innerHTML=`&#128198; Per LMR's fixed twice-monthly valuation schedule, this subscription will price at the valuation due on <strong>${valDate}</strong> (or any valuation recorded after it). That valuation hasn't been recorded yet, so this deposit will show as <strong style="color:#633806">Pending</strong> until an administrator records it via Portfolio → Valuation.`;
+    msg.innerHTML=`&#128198; Per LMR's fixed twice-monthly valuation schedule, this subscription will price at the valuation due on <strong>${esc(valDate)}</strong> (or any valuation recorded after it). That valuation hasn't been recorded yet, so this deposit will show as <strong style="color:#633806">Pending</strong> until an administrator records it via Portfolio → Valuation.`;
     banner.style.display='block';
     return;
   }
@@ -5386,13 +5694,13 @@ function renderSubsSinceVal(){
   const wdwsSince=withdrawals.filter(w=>w.date>lastVal.date);
 
   if(!subsSince.length&&!wdwsSince.length){
-    wrap.innerHTML=`<div style="font-size:13px;color:#3b6d11;padding:8px 0">&#10003; No transactions since the last valuation on <strong>${lastVal.date}</strong>. NAV is current.</div>`;
+    wrap.innerHTML=`<div style="font-size:13px;color:#3b6d11;padding:8px 0">&#10003; No transactions since the last valuation on <strong>${esc(lastVal.date)}</strong>. NAV is current.</div>`;
     return;
   }
 
   const daysSince=Math.floor((new Date()-new Date(lastVal.date))/(1000*60*60*24));
   let h=`<div style="font-size:12px;color:#5f5e5a;margin-bottom:10px">
-    Since the last valuation on <strong>${lastVal.date}</strong> (NAV: <strong>${getCurrency()}${lastVal.nav.toLocaleString(undefined,{minimumFractionDigits:4,maximumFractionDigits:4})}</strong>, <strong>${daysSince}</strong> day${daysSince!==1?'s':''} ago):
+    Since the last valuation on <strong>${esc(lastVal.date)}</strong> (NAV: <strong>${getCurrency()}${lastVal.nav.toLocaleString(undefined,{minimumFractionDigits:4,maximumFractionDigits:4})}</strong>, <strong>${daysSince}</strong> day${daysSince!==1?'s':''} ago):
   </div>`;
 
   if(subsSince.length){
@@ -5407,7 +5715,7 @@ function renderSubsSinceVal(){
         <th class="num" style="width:90px">Units</th>
       </tr></thead><tbody>`;
     subsSince.forEach(d=>{
-      h+=`<tr><td>${d.date}</td><td><strong>${d.member}</strong></td>
+      h+=`<tr><td>${esc(d.date)}</td><td><strong>${esc(d.member)}</strong></td>
         <td class="num">${fmt(d.amount)}</td>
         <td class="num">${fmt(d.nav)}</td>
         <td class="num">${fmtU(d.units)}</td></tr>`;
@@ -5462,7 +5770,7 @@ function populateDepValuationOverride(){
     :'';
   sel.innerHTML='<option value="">— Auto (use scheduled valuation) —</option>'
     +launchOpt
-    +sorted.map(v=>`<option value="${v.id}">${v.date} — NAV ${v.nav.toLocaleString(undefined,{minimumFractionDigits:4,maximumFractionDigits:4})}</option>`).join('');
+    +sorted.map(v=>`<option value="${jsNum(v.id)}">${esc(v.date)} — NAV ${v.nav.toLocaleString(undefined,{minimumFractionDigits:4,maximumFractionDigits:4})}</option>`).join('');
   if(prev && [...sel.options].some(o=>o.value===prev)) sel.value=prev;
 }
 
@@ -5489,8 +5797,8 @@ function renderLedger(){
     const pending=isPendingUnitized(d);
     let navCell,unitsCell;
     if(pending){
-      navCell=`<span class="tag tag-amber" style="font-size:10px" title="Will be priced at the ${d.applicableValuationDate||'scheduled'} valuation">Pending</span>`;
-      unitsCell=`<span style="color:#c9a227;font-size:11px">awaits ${d.applicableValuationDate||'—'}</span>`;
+      navCell=`<span class="tag tag-amber" style="font-size:10px" title="Will be priced at the ${esc(d.applicableValuationDate||'scheduled')} valuation">Pending</span>`;
+      unitsCell=`<span style="color:#c9a227;font-size:11px">awaits ${esc(d.applicableValuationDate||'—')}</span>`;
     } else {
       const currentApplicableNav=getNavAtDate(d.date);
       const navDiffers=Math.abs(d.nav-currentApplicableNav)>0.0001;
@@ -5500,24 +5808,24 @@ function renderLedger(){
             ? ' <span class="tag tag-blue" style="font-size:9px" title="Priced immediately at the last valuation NAV instead of waiting for the scheduled valuation">&#9889; Early</span>'
             : '');
       navCell=(navDiffers
-        ?`${fmt(d.nav)} <span style="font-size:10px;color:#c9a227" title="Applicable NAV on ${d.date} is ${getCurrency()}${currentApplicableNav.toFixed(4)}">&#9432;</span>`
+        ?`${fmt(d.nav)} <span style="font-size:10px;color:#c9a227" title="Applicable NAV on ${esc(d.date)} is ${getCurrency()}${currentApplicableNav.toFixed(4)}">&#9432;</span>`
         :fmt(d.nav))+modeBadge;
       unitsCell=fmtU(d.units);
     }
     const rowBg=isLocked?'#fafaf8':isEditing?'#eaf6ef':'';
-    const lockBtn=`<span class="lock-icon" onclick="toggleDepositLock(${d.id},event)" title="${isLocked?'Locked — click to unlock':'Unlocked — click to lock'}">${isLocked?'🔒':'🔓'}</span>`;
+    const lockBtn=`<span class="lock-icon" onclick="toggleDepositLock(${jsNum(d.id)},event)" title="${isLocked?'Locked — click to unlock':'Unlocked — click to lock'}">${isLocked?'🔒':'🔓'}</span>`;
     rows+=`<tr style="cursor:${isLocked?'default':'pointer'};background:${rowBg};${isLocked?'opacity:.8':''}" title="${isLocked?'Locked':'Click to edit'}"
-      onclick="${isLocked?'void 0':'editDeposit('+d.id+')'}"
+      onclick="${isLocked?'void 0':'editDeposit('+jsNum(d.id)+')'}"
       onmouseover="this.style.background='${isLocked?rowBg:isEditing?'#d6eedf':'#f4f4f2'}'"
       onmouseout="this.style.background='${rowBg}'">
       <td onclick="event.stopPropagation()" style="padding:4px 6px">${lockBtn}</td>
-      <td style="${isLocked?'color:#aaa9a4':''}">${d.date}</td>
+      <td style="${isLocked?'color:#aaa9a4':''}">${esc(d.date)}</td>
       <td style="font-size:11px;font-weight:600;color:${isLocked?'#c4c2bc':'#0c447c'}">${memberId}</td>
-      <td><strong style="${isLocked?'color:#aaa9a4':''}">${d.member}</strong></td>
+      <td><strong style="${isLocked?'color:#aaa9a4':''}">${esc(d.member)}</strong></td>
       <td class="num" style="${isLocked?'color:#aaa9a4':''}">${fmt(d.amount)}</td>
       <td class="num" style="font-size:12px;${isLocked?'color:#bbb9b3':''}">${navCell}</td>
       <td class="num" style="${isLocked?'color:#aaa9a4':''}">${unitsCell}</td>
-      <td onclick="event.stopPropagation()">${isLocked?'<span style="font-size:12px;color:#c4c2bc">—</span>':'<button class="btn-danger" onclick="removeDeposit('+d.id+')" style="padding:3px 7px;font-size:11px">&#128465;</button>'}</td>
+      <td onclick="event.stopPropagation()">${isLocked?'<span style="font-size:12px;color:#c4c2bc">—</span>':'<button class="btn-danger" onclick="removeDeposit('+jsNum(d.id)+')" style="padding:3px 7px;font-size:11px">&#128465;</button>'}</td>
     </tr>`;
   });
   document.getElementById('ledger-wrap').innerHTML=
@@ -5634,10 +5942,10 @@ function renderOverview(){
     const badge=share>0.3?'tag-blue':share>0.15?'tag-purple':'tag-amber';
     const reg=membersRegistry.find(r=>r.name===m.member);
     const memberId=reg&&reg.memberId?reg.memberId:'—';
-    h+=`<tr class="member-summary-row" id="msrow-${i}" onclick="toggleMemberDeposits(${i},'${m.member.replace(/'/g,"\\'")}')" style="cursor:pointer" onmouseover="this.cells[0].textContent=this.dataset.open==='1'?'▲':'▼'" onmouseout="this.cells[0].textContent=this.dataset.open==='1'?'▲':'▶'" data-open="0">
+    h+=`<tr class="member-summary-row" id="msrow-${i}" onclick="toggleMemberDeposits(${i},'${jsArg(m.member)}')" style="cursor:pointer" onmouseover="this.cells[0].textContent=this.dataset.open==='1'?'▲':'▼'" onmouseout="this.cells[0].textContent=this.dataset.open==='1'?'▲':'▶'" data-open="0">
       <td style="color:#888780;font-size:10px">&#9658;</td>
       <td style="font-size:11px;font-weight:600;color:#0c447c">${memberId}</td>
-      <td><strong>${m.member}</strong></td>
+      <td><strong>${esc(m.member)}</strong></td>
       <td class="num">${fmt(m.totalAmount)}</td>
       <td class="num">${fmtU(m.totalUnits)}</td>
       <td class="num"><span class="tag ${badge}">${(share*100).toFixed(2)}%</span></td>
@@ -5671,7 +5979,7 @@ function toggleMemberDeposits(idx,memberName){
     const m=ms.find(x=>x.member===memberName);
     if(!m){return;}
     let inner='<div style="padding:8px 12px 10px 28px;background:#f4f4f2">'
-      +'<div style="font-size:11px;font-weight:600;color:#888780;text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px">Deposits — '+memberName+'</div>'
+      +'<div style="font-size:11px;font-weight:600;color:#888780;text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px">Deposits — '+esc(memberName)+'</div>'
       +'<table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr>'
       +'<th style="padding:5px 6px;border-bottom:0.5px solid #d3d1c7;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:#888780">Date</th>'
       +'<th style="text-align:right;padding:5px 6px;border-bottom:0.5px solid #d3d1c7;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:#888780">Amount</th>'
@@ -5679,7 +5987,7 @@ function toggleMemberDeposits(idx,memberName){
       +'<th style="text-align:right;padding:5px 6px;border-bottom:0.5px solid #d3d1c7;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:#888780">Units</th>'
       +'</tr></thead><tbody>';
     m.deposits.forEach(d=>{
-      inner+=`<tr><td style="padding:5px 6px;border-bottom:0.5px solid #e8e6df">${d.date}</td>`
+      inner+=`<tr><td style="padding:5px 6px;border-bottom:0.5px solid #e8e6df">${esc(d.date)}</td>`
         +`<td style="text-align:right;padding:5px 6px;border-bottom:0.5px solid #e8e6df;font-variant-numeric:tabular-nums">${fmt(d.amount)}</td>`
         +`<td style="text-align:right;padding:5px 6px;border-bottom:0.5px solid #e8e6df;font-variant-numeric:tabular-nums">${fmt(d.nav)}</td>`
         +`<td style="text-align:right;padding:5px 6px;border-bottom:0.5px solid #e8e6df;font-variant-numeric:tabular-nums">${fmtU(d.units)}</td></tr>`;
@@ -5753,14 +6061,14 @@ function renderFundPerformanceExplanation(){
 
   /* 1 — where the fund stands */
   h+=H('Where the fund stands');
-  h+=P(`At the latest valuation on <strong>${last.date}</strong> (${daysAgo===0?'today':daysAgo+' day'+(daysAgo!==1?'s':'')+' ago'}), the pooled portfolio was valued at <strong>${fmt(last.portfolioValue)}</strong> with <strong>${fmtU(last.totalUnits)}</strong> units outstanding, giving a unit price (NAV) of <strong>${navF(last.nav)}</strong>. Against the launch price of ${navF(launchNav)}, that is <strong style="color:${ovpCol(sinceLaunchPct)}">${ovpPct(sinceLaunchPct)}</strong> over ${totalDays} day${totalDays!==1?'s':''}${totalDays>=60?`, which works out to roughly <strong style="color:${ovpCol(annualised)}">${ovpPct(annualised,1)} a year</strong> if that pace were sustained`:''}. Because NAV is a per-unit price, it reflects investment performance only \u2014 new subscriptions and withdrawals do not move it, even though they change the portfolio's total value.`);
-  h+=P(`Since the previous valuation (${lastSeg.from===launchDate&&n===1?'launch':lastSeg.from}), NAV moved <strong style="color:${ovpCol(lastSeg.pct)}">${ovpPct(lastSeg.pct)}</strong> over ${lastSeg.days} day${lastSeg.days!==1?'s':''}.`);
+  h+=P(`At the latest valuation on <strong>${esc(last.date)}</strong> (${daysAgo===0?'today':daysAgo+' day'+(daysAgo!==1?'s':'')+' ago'}), the pooled portfolio was valued at <strong>${fmt(last.portfolioValue)}</strong> with <strong>${fmtU(last.totalUnits)}</strong> units outstanding, giving a unit price (NAV) of <strong>${navF(last.nav)}</strong>. Against the launch price of ${navF(launchNav)}, that is <strong style="color:${ovpCol(sinceLaunchPct)}">${ovpPct(sinceLaunchPct)}</strong> over ${totalDays} day${totalDays!==1?'s':''}${totalDays>=60?`, which works out to roughly <strong style="color:${ovpCol(annualised)}">${ovpPct(annualised,1)} a year</strong> if that pace were sustained`:''}. Because NAV is a per-unit price, it reflects investment performance only \u2014 new subscriptions and withdrawals do not move it, even though they change the portfolio's total value.`);
+  h+=P(`Since the previous valuation (${lastSeg.from===launchDate&&n===1?'launch':esc(lastSeg.from)}), NAV moved <strong style="color:${ovpCol(lastSeg.pct)}">${ovpPct(lastSeg.pct)}</strong> over ${lastSeg.days} day${lastSeg.days!==1?'s':''}.`);
   if(daysAgo>45) h+=P(`<span style="color:#633806">&#9888; The last valuation is ${daysAgo} days old. Anything below describes the fund as it was then \u2014 record a fresh valuation for an up-to-date picture.</span>`);
 
   /* 2 — consistency */
   h+=H('How consistent the performance has been');
   if(n>=2){
-    h+=P(`Across <strong>${n}</strong> valuation periods, NAV rose in <strong>${up}</strong> and fell in <strong>${down}</strong>${n-up-down?` (${n-up-down} flat)`:''}. The strongest period was <strong style="color:#3b6d11">${ovpPct(best.pct)}</strong> (to ${best.to}) and the weakest <strong style="color:${ovpCol(worst.pct)}">${ovpPct(worst.pct)}</strong> (to ${worst.to}). ${sigma!=null&&sigma*Math.sqrt(30)*100>=3?'Movements between valuations have been fairly large, so expect a wide range of outcomes.':'Movements between valuations have been fairly moderate.'}`);
+    h+=P(`Across <strong>${esc(n)}</strong> valuation periods, NAV rose in <strong>${up}</strong> and fell in <strong>${down}</strong>${n-up-down?` (${n-up-down} flat)`:''}. The strongest period was <strong style="color:#3b6d11">${ovpPct(best.pct)}</strong> (to ${esc(best.to)}) and the weakest <strong style="color:${ovpCol(worst.pct)}">${ovpPct(worst.pct)}</strong> (to ${esc(worst.to)}). ${sigma!=null&&sigma*Math.sqrt(30)*100>=3?'Movements between valuations have been fairly large, so expect a wide range of outcomes.':'Movements between valuations have been fairly moderate.'}`);
   } else {
     h+=P(`Only one valuation period exists so far (<strong>${ovpPct(lastSeg.pct)}</strong>), which is too little to say whether performance is steady or erratic.`);
   }
@@ -5829,7 +6137,7 @@ function renderFundPerformanceExplanation(){
   h+=P(`These scenarios extend the fund\u2019s own record forward. The <strong>Base</strong> case assumes NAV keeps compounding at its average pace since launch${sigma!=null?`; <strong>Growth</strong> and <strong>Downside</strong> add or subtract one typical swing, based on how much NAV has varied between valuations`:''}.${worst.pct<0?' <strong>Stress</strong> shows what a repeat of the worst period so far would do to today\u2019s NAV.':''}`);
   let tb='<div style="overflow-x:auto"><table style="font-size:12px"><thead><tr><th style="width:90px">Scenario</th><th style="white-space:normal">Assumption</th><th class="num" style="width:120px">NAV / unit</th><th class="num" style="width:80px">Change</th><th class="num" style="width:140px">Fund value*</th></tr></thead><tbody>';
   sc.forEach(r=>{
-    tb+=`<tr><td><strong style="color:${r.color}">${r.label}</strong></td><td style="white-space:normal;font-size:12px;color:#5f5e5a">${r.assume}</td><td class="num">${navF(r.nav)}</td><td class="num" style="color:${ovpCol(r.pct)};font-weight:600">${ovpPct(r.pct,1)}</td><td class="num" style="font-weight:600">${fmt(r.value)}</td></tr>`;
+    tb+=`<tr><td><strong style="color:${r.color}">${esc(r.label)}</strong></td><td style="white-space:normal;font-size:12px;color:#5f5e5a">${r.assume}</td><td class="num">${navF(r.nav)}</td><td class="num" style="color:${ovpCol(r.pct)};font-weight:600">${ovpPct(r.pct,1)}</td><td class="num" style="font-weight:600">${fmt(r.value)}</td></tr>`;
   });
   tb+='</tbody></table></div><div style="font-size:11px;color:#888780;margin:6px 0 10px">*Today\u2019s '+fmtU(units)+' units at the projected NAV \u2014 excludes any future subscriptions or withdrawals.</div>';
   h+=tb;
@@ -5837,7 +6145,7 @@ function renderFundPerformanceExplanation(){
 
   /* 6 — caveats */
   h+=H('How much weight to put on this');
-  let cav=`This outlook rests on <strong>${n}</strong> valuation period${n!==1?'s':''} spanning <strong>${totalDays}</strong> day${totalDays!==1?'s':''}.`;
+  let cav=`This outlook rests on <strong>${esc(n)}</strong> valuation period${n!==1?'s':''} spanning <strong>${totalDays}</strong> day${totalDays!==1?'s':''}.`;
   if(thin) cav+=' That is a short record, so a single good or bad month can swing the numbers a lot \u2014 treat the scenarios as a rough guide, not an expectation.';
   else cav+=' That is a reasonable record, but markets can behave very differently from the past.';
   if(Math.abs(annualised)>40&&totalDays<365) cav+=` The average pace (${ovpPct(annualised,0)} a year) is unusually ${annualised>0?'high':'low'} for the period covered and is unlikely to be sustained.`;
@@ -6071,7 +6379,7 @@ function previewNewNAV(){
           ?`<span style="background:#a32d2d;color:#fff;font-size:10px;padding:2px 6px;border-radius:4px">Underwater</span>`
           :`<span style="background:#eaf3de;color:#27500a;font-size:10px;padding:2px 6px;border-radius:4px">In profit</span>`;
         html+=`<tr>
-          <td style="padding:4px 6px;border-bottom:0.5px solid #f8d7d7"><strong>${m.name}</strong></td>
+          <td style="padding:4px 6px;border-bottom:0.5px solid #f8d7d7"><strong>${esc(m.name)}</strong></td>
           <td style="text-align:right;padding:4px 6px;border-bottom:0.5px solid #f8d7d7;font-variant-numeric:tabular-nums">${fmtU(m.netUnits)}</td>
           <td style="text-align:right;padding:4px 6px;border-bottom:0.5px solid #f8d7d7;font-variant-numeric:tabular-nums">${fmt(m.costBasis)}</td>
           <td style="text-align:right;padding:4px 6px;border-bottom:0.5px solid #f8d7d7;font-variant-numeric:tabular-nums">${fmt(m.currentValue)}</td>
@@ -6232,7 +6540,7 @@ function renderCashSubAccountRows(parentCode,asOfDate,depth){
     const subBal=getAccountBalanceWithDescendants(sub.code,asOfDate);
     const indent=20+depth*18;
     return `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:5px 8px 5px ${indent}px;border-bottom:0.5px solid #f0ede4;font-size:12px">
-      <span style="color:#5f5e5a">&#8627; ${sub.name}${sub.note?` <span style="color:#b4b2a9">— ${sub.note}</span>`:''}</span>
+      <span style="color:#5f5e5a">&#8627; ${esc(sub.name)}${sub.note?` <span style="color:#b4b2a9">— ${esc(sub.note)}</span>`:''}</span>
       <span style="font-variant-numeric:tabular-nums;font-weight:500;color:#1a1a18;flex-shrink:0">${fmt(subBal)}</span>
     </div>${renderCashSubAccountRows(sub.code,asOfDate,depth+1)}`;
   }).join('');
@@ -6253,7 +6561,7 @@ function renderAssetValuator(){
 
   let h=`<div style="font-size:12px;color:#5f5e5a;margin-bottom:12px;line-height:1.6">
     Enter the current market value of each investment. The total will auto-fill the Portfolio value field above.
-    ${lastVal?`<span style="color:#888780">Previous values from ${lastVal.date} are pre-filled as a starting point.</span>`:''}
+    ${lastVal?`<span style="color:#888780">Previous values from ${esc(lastVal.date)} are pre-filled as a starting point.</span>`:''}
   </div>`;
 
   // Cash and Cash Equivalents — always first, auto-filled from the cash ledger balance as of the valuation date
@@ -6296,7 +6604,7 @@ function renderAssetValuator(){
   const futureItemsCount=portfolioItems.length-itemsAsOfDate.length;
   if(futureItemsCount>0){
     h+=`<div style="font-size:11px;color:#888780;padding:6px 8px;background:#f4f4f2;border-radius:6px;margin-bottom:10px">
-      &#9432; ${futureItemsCount} investment${futureItemsCount!==1?'s':''} registered after ${valDate} ${futureItemsCount!==1?'are':'is'} excluded from this valuation.
+      &#9432; ${futureItemsCount} investment${futureItemsCount!==1?'s':''} registered after ${esc(valDate)} ${futureItemsCount!==1?'are':'is'} excluded from this valuation.
     </div>`;
   }
   if(!itemsAsOfDate.length){
@@ -6319,7 +6627,7 @@ function renderAssetValuator(){
     byType[label].push(p);
   });
   Object.entries(byType).forEach(([typeName,items])=>{
-    h+=`<div style="font-size:11px;font-weight:600;color:#5f5e5a;text-transform:uppercase;letter-spacing:.05em;padding:6px 0 4px;border-bottom:0.5px solid #e8e6df;margin-bottom:8px">${typeName}</div>`;
+    h+=`<div style="font-size:11px;font-weight:600;color:#5f5e5a;text-transform:uppercase;letter-spacing:.05em;padding:6px 0 4px;border-bottom:0.5px solid #e8e6df;margin-bottom:8px">${esc(typeName)}</div>`;
     items.forEach(p=>{
       const prev=lastAssetValues[p.assetId]||0;
       const totalCost=purchases.filter(x=>x.assetId===p.assetId&&x.date<=valDate).reduce((s,x)=>s+x.amount,0)
@@ -6328,20 +6636,20 @@ function renderAssetValuator(){
       const glBadge=prev&&totalCost?`<span style="font-size:10px;font-weight:600;color:${prev>=totalCost?'#3b6d11':'#a32d2d'}">${prev>=totalCost?'▲':'▼'} ${Math.abs(((prev-totalCost)/totalCost*100)).toFixed(1)}% vs cost</span>`:'';
       h+=`<div style="display:flex;align-items:center;gap:10px;padding:8px 4px;border-bottom:0.5px solid #f0ede4;flex-wrap:wrap">
         <div style="flex:0 0 130px">
-          <div style="font-size:11px;font-weight:600;color:#0c447c">${p.assetId}</div>
-          <div style="font-size:11px;color:#888780">${p.description||p.broker||'—'}</div>
+          <div style="font-size:11px;font-weight:600;color:#0c447c">${esc(p.assetId)}</div>
+          <div style="font-size:11px;color:#888780">${esc(p.description||p.broker||'—')}</div>
         </div>
         <div style="flex:0 0 110px;font-size:11px;color:#5f5e5a">Cost: <strong>${totalCost?fmt(totalCost):'—'}</strong></div>
         <div style="flex:1;min-width:150px">
-          <input id="av-input-${p.id}" type="text"
+          <input id="av-input-${jsNum(p.id)}" type="text"
             placeholder="Current value"
             value="${prev?prev.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}):''}"
             style="width:100%;${glStyle}"
-            oninput="onAssetValueInput(this,${p.id},'${p.assetId}')"
-            onblur="formatAssetValueInput(this,${p.id})"
+            oninput="onAssetValueInput(this,${jsNum(p.id)},'${jsArg(p.assetId)}')"
+            onblur="formatAssetValueInput(this,${jsNum(p.id)})"
             data-prev="${prev}" data-cost="${totalCost}"/>
         </div>
-        <div style="flex:0 0 140px;font-size:12px" id="av-gl-${p.id}">${glBadge}</div>
+        <div style="flex:0 0 140px;font-size:12px" id="av-gl-${jsNum(p.id)}">${glBadge}</div>
       </div>`;
     });
     h+='<div style="margin-bottom:10px"></div>';
@@ -6452,7 +6760,7 @@ function renderAssetValHistory(){
   h+='<div style="overflow-x:auto"><table style="font-size:12px"><thead><tr>'
     +'<th style="min-width:130px;text-align:left;padding:5px 6px">Asset</th>'
     +'<th style="min-width:80px;text-align:left;padding:5px 6px">Type</th>';
-  sortedVals.forEach(v=>{h+=`<th class="num" style="min-width:110px;padding:5px 6px">${v.date}</th>`;});
+  sortedVals.forEach(v=>{h+=`<th class="num" style="min-width:110px;padding:5px 6px">${esc(v.date)}</th>`;});
   h+='<th class="num" style="min-width:110px;background:#f4f4f2;padding:5px 6px">Latest</th>'
     +'<th class="num" style="min-width:80px;padding:5px 6px">Total Δ</th></tr></thead><tbody>';
 
@@ -6472,11 +6780,11 @@ function renderAssetValHistory(){
 
     h+=`<tr onmouseover="this.style.background='#f9f8f4'" onmouseout="this.style.background=''">
       <td style="padding:6px 6px;border-bottom:0.5px solid #e8e6df">
-        <div style="font-weight:600;color:${isCash?'#27500a':'#0c447c'}">${isCash?'Cash &amp; Equivalents':assetId}</div>
-        ${desc?`<div style="font-size:10px;color:#888780">${desc}</div>`:''}
+        <div style="font-weight:600;color:${isCash?'#27500a':'#0c447c'}">${isCash?'Cash &amp; Equivalents':esc(assetId)}</div>
+        ${desc?`<div style="font-size:10px;color:#888780">${esc(desc)}</div>`:''}
       </td>
       <td style="padding:6px 6px;border-bottom:0.5px solid #e8e6df">
-        <span class="tag tag-purple" style="font-size:10px">${typeLabel}</span>
+        <span class="tag tag-purple" style="font-size:10px">${esc(typeLabel)}</span>
       </td>`;
     valuesForAsset.forEach((v,i)=>{
       const prevDefined=i>0?valuesForAsset.slice(0,i).filter(x=>x!==null).slice(-1)[0]:null;
@@ -6566,30 +6874,30 @@ function renderNAVHistory(){
     const subCount=deposits.filter(d=>d.date>prevDate&&d.date<=v.date).length;
     const subNote=subCount>0?`<span style="font-size:10px;color:#888780;margin-left:4px">(${subCount} sub${subCount!==1?'s':''})</span>`:'';
     const hasAssets=v.assetValues&&Object.keys(v.assetValues).length>0;
-    const arrowId=`nhrow-arrow-${v.id}`;
-    const detailId=`nhrow-detail-${v.id}`;
+    const arrowId=`nhrow-arrow-${jsNum(v.id)}`;
+    const detailId=`nhrow-detail-${jsNum(v.id)}`;
 
     // Period/since-launch % always computed against chronological order (i, navValuations[i-1])
     // above — only the assembled blocks below get reordered for the newest/oldest toggle.
-    navHistRows.push(`<tr id="nhrow-${v.id}" style="cursor:${hasAssets?'pointer':'default'}"
-      onclick="${hasAssets?`toggleNAVRowDetail(${v.id})`:'void 0'}"
+    navHistRows.push(`<tr id="nhrow-${jsNum(v.id)}" style="cursor:${hasAssets?'pointer':'default'}"
+      onclick="${hasAssets?`toggleNAVRowDetail(${jsNum(v.id)})`:'void 0'}"
       title="${hasAssets?'Click to view investment breakdown':''}"
       onmouseover="this.style.background='#f4f4f2'"
       onmouseout="this.style.background=document.getElementById('nhrow-${v.id}').dataset.sel==='1'?'#fffbf0':''">
       <td style="width:20px;color:#888780;font-size:10px">
         ${hasAssets?`<span id="${arrowId}">&#9658;</span>`:'<span style="opacity:.3">—</span>'}
       </td>
-      <td>${v.date}</td>
+      <td>${esc(v.date)}</td>
       <td class="num">${fmt(v.portfolioValue)}</td>
       <td class="num">${fmtU(v.totalUnits)}</td>
       <td class="num"><strong style="color:${navCol}">${getCurrency()}${v.nav.toLocaleString(undefined,{minimumFractionDigits:4,maximumFractionDigits:4})}</strong>${subNote}</td>
       <td class="num" style="color:${periodCol};font-weight:600">${periodChange>=0?'▲':'▼'} ${Math.abs(periodPct)}%</td>
       <td class="num" style="color:${launchCol}">${sincelaunchChange>=0?'+':''}${sincelaunchPct}%</td>
-      <td style="font-size:12px">${v.notes||'—'}</td>
+      <td style="font-size:12px">${esc(v.notes||'—')}</td>
       <td onclick="event.stopPropagation()">
         <div style="display:flex;gap:4px">
-          <button onclick="loadValuationForEdit(${v.id})" style="padding:3px 7px;font-size:11px;background:#e6f1fb;color:#0c447c;border-color:#b5d4f4" title="Edit this valuation">&#9998;</button>
-          <button class="btn-danger" onclick="removeNAVValuation(${v.id})" style="padding:3px 7px;font-size:11px" title="Delete">&#128465;</button>
+          <button onclick="loadValuationForEdit(${jsNum(v.id)})" style="padding:3px 7px;font-size:11px;background:#e6f1fb;color:#0c447c;border-color:#b5d4f4" title="Edit this valuation">&#9998;</button>
+          <button class="btn-danger" onclick="removeNAVValuation(${jsNum(v.id)})" style="padding:3px 7px;font-size:11px" title="Delete">&#128465;</button>
         </div>
       </td>
     </tr>
@@ -6662,14 +6970,14 @@ function injectNAVRowDetail(id){
   const allIds=[...(assetIds.includes('CASH')?['CASH']:[]),...orderedIds,...extraIds];
   let h=`<div style="padding:12px 20px 16px 32px">
     <div style="font-size:11px;font-weight:600;color:#888780;text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px">
-      Investment breakdown — ${v.date}
+      Investment breakdown — ${esc(v.date)}
     </div>
     <div style="overflow-x:auto"><table style="font-size:12px;width:auto;min-width:400px"><thead><tr>
       <th style="text-align:left;padding:4px 8px;border-bottom:0.5px solid #d3d1c7;color:#888780;font-size:11px">Asset ID</th>
       <th style="text-align:left;padding:4px 8px;border-bottom:0.5px solid #d3d1c7;color:#888780;font-size:11px">Description</th>
       <th style="text-align:left;padding:4px 8px;border-bottom:0.5px solid #d3d1c7;color:#888780;font-size:11px">Type</th>
       <th style="text-align:right;padding:4px 8px;border-bottom:0.5px solid #d3d1c7;color:#888780;font-size:11px">Cost basis</th>
-      <th style="text-align:right;padding:4px 8px;border-bottom:0.5px solid #d3d1c7;color:#888780;font-size:11px">Value at ${v.date}</th>
+      <th style="text-align:right;padding:4px 8px;border-bottom:0.5px solid #d3d1c7;color:#888780;font-size:11px">Value at ${esc(v.date)}</th>
       <th style="text-align:right;padding:4px 8px;border-bottom:0.5px solid #d3d1c7;color:#888780;font-size:11px">G / L</th>
     </tr></thead><tbody>`;
   let totalValue=0;let totalCost=0;
@@ -6687,9 +6995,9 @@ function injectNAVRowDetail(id){
     const glPct=(!isCash&&cost)?((val-cost)/cost*100):null;
     const glCol=gl===null?'#888780':gl>=0?'#3b6d11':'#a32d2d';
     h+=`<tr onmouseover="this.style.background='#f4f4f2'" onmouseout="this.style.background=''">
-      <td style="padding:5px 8px;border-bottom:0.5px solid #e8e6df;font-weight:600;color:${isCash?'#27500a':'#0c447c'}">${isCash?'Cash &amp; Equivalents':assetId}</td>
-      <td style="padding:5px 8px;border-bottom:0.5px solid #e8e6df;color:#5f5e5a">${desc}</td>
-      <td style="padding:5px 8px;border-bottom:0.5px solid #e8e6df"><span class="tag ${isCash?'tag-green':'tag-purple'}" style="font-size:10px">${typeLabel}</span></td>
+      <td style="padding:5px 8px;border-bottom:0.5px solid #e8e6df;font-weight:600;color:${isCash?'#27500a':'#0c447c'}">${isCash?'Cash &amp; Equivalents':esc(assetId)}</td>
+      <td style="padding:5px 8px;border-bottom:0.5px solid #e8e6df;color:#5f5e5a">${esc(desc)}</td>
+      <td style="padding:5px 8px;border-bottom:0.5px solid #e8e6df"><span class="tag ${isCash?'tag-green':'tag-purple'}" style="font-size:10px">${esc(typeLabel)}</span></td>
       <td style="text-align:right;padding:5px 8px;border-bottom:0.5px solid #e8e6df;font-variant-numeric:tabular-nums">${cost?fmt(cost):'—'}</td>
       <td style="text-align:right;padding:5px 8px;border-bottom:0.5px solid #e8e6df;font-weight:600;font-variant-numeric:tabular-nums">${fmt(val)}</td>
       <td style="text-align:right;padding:5px 8px;border-bottom:0.5px solid #e8e6df;color:${glCol};font-weight:600;font-variant-numeric:tabular-nums">
@@ -6765,7 +7073,7 @@ function loadValuationForEdit(id){
   const banner=document.createElement('div');
   banner.id='val-edit-banner';
   banner.style.cssText='background:#fdf6e3;border:0.5px solid #f0d98a;border-radius:8px;padding:10px 14px;margin-bottom:10px;font-size:12px;color:#633806;display:flex;align-items:center;justify-content:space-between;gap:10px';
-  banner.innerHTML=`<span>&#9998; <strong>Editing valuation dated ${v.date}.</strong> Make your changes above and click Update. The original record will be replaced.</span>
+  banner.innerHTML=`<span>&#9998; <strong>Editing valuation dated ${esc(v.date)}.</strong> Make your changes above and click Update. The original record will be replaced.</span>
     <div style="display:flex;gap:6px">
       <button onclick="saveValuationEdit(${id})" style="background:#1d6f42;border-color:#1d6f42;color:#fff;font-size:12px;padding:5px 12px">&#10003; Update</button>
       <button onclick="cancelValuationEdit()" style="font-size:12px;padding:5px 10px;color:#a32d2d;border-color:#f09595">&#10005; Cancel</button>
@@ -6892,7 +7200,7 @@ function renderMemberPills(){
   const members=[...new Set(deposits.map(d=>d.member))];
   if(!members.length){document.getElementById('member-pills').innerHTML='<div class="empty">No members yet — add deposits first.</div>';document.getElementById('member-detail').innerHTML='';return;}
   let h='<div style="display:flex;gap:8px;flex-wrap:wrap">';
-  members.forEach(m=>{h+=`<button class="m-pill ${m===selectedMember?'sel':''}" onclick="selectMember('${m.replace(/'/g,"\\'")}')"> ${m}</button>`;});
+  members.forEach(m=>{h+=`<button class="m-pill ${m===selectedMember?'sel':''}" onclick="selectMember('${jsArg(m)}')"> ${esc(m)}</button>`;});
   document.getElementById('member-pills').innerHTML=h+'</div>';
   if(!selectedMember||!members.includes(selectedMember))selectMember(members[0]);
 }
@@ -6916,7 +7224,7 @@ function getMemberStats(name){
   // total fund net units for share calculation
   const allDepUnits=deposits.reduce((s,d)=>s+(d.units||0),0);
   const allWdwUnits=withdrawals.reduce((s,w)=>s+(w.units||0),0);
-  const totalFundUnits=Math.max(allDepUnits-allWdwUnits,0);
+  const totalFundUnits=portalStatement?Math.max(portalStatement.totalFundUnits||0,0):Math.max(allDepUnits-allWdwUnits,0); // v3.36.0: portal holds only this member's records
   const share=totalFundUnits>0?myNetUnits/totalFundUnits:0;
   const firstDate=myDeps.length?myDeps[0].date:null;
   const avgDeposit=myDeps.length?myDeps.reduce((s,d)=>s+d.amount,0)/myDeps.length:0;
@@ -6946,7 +7254,7 @@ function collapsibleCard(id,title,content,startOpen){
   const display=startOpen?'block':'none';
   return `<div class="card">
     <div style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none" onclick="toggleMemberSection('${id}')">
-      <div class="card-title" style="margin-bottom:0">${title}</div>
+      <div class="card-title" style="margin-bottom:0">${esc(title)}</div>
       <span id="${id}-arrow" style="font-size:11px;color:#888780">${arrow}</span>
     </div>
     <div id="${id}-body" style="display:${display};margin-top:10px">${content}</div>
@@ -6978,13 +7286,13 @@ function renderMemberDetail(name,targetId){
   // Card 1: header + key NAV metrics
   let h=`<div class="card">
     <div class="member-header">
-      <div class="avatar">${initials(name)}</div>
+      <div class="avatar">${esc(initials(name))}</div>
       <div style="flex:1">
-        <div style="font-weight:600;font-size:15px">${name}</div>
+        <div style="font-weight:600;font-size:15px">${esc(name)}</div>
         <div style="font-size:12px;color:#5f5e5a">${s.myDeps.length} subscription${s.myDeps.length!==1?'s':''} &middot; ${(s.share*100).toFixed(2)}% of fund units</div>
       </div>
-      ${show('pdf')?`<button class="btn-pdf" onclick="generateMemberPDF('${name.replace(/'/g,"\\'")}')">&#128196; PDF statement</button>
-      <button class="btn-pdf" style="background:#e6f1fb;color:#0c447c;border-color:#b5d4f4" onclick="emailMemberStatement('${name.replace(/'/g,"\\'")}')">&#9993; Email statement</button>`:''}
+      ${show('pdf')?`<button class="btn-pdf" onclick="generateMemberPDF('${jsArg(name)}')">&#128196; PDF statement</button>
+      <button class="btn-pdf" style="background:#e6f1fb;color:#0c447c;border-color:#b5d4f4" onclick="emailMemberStatement('${jsArg(name)}')">&#9993; Email statement</button>`:''}
     </div>
     <div class="metrics" style="${show('summary')?'':'display:none'}">
       <div class="metric"><div class="metric-label">Net units held</div><div class="metric-val" style="color:#0c447c">${fmtU(s.myNetUnits)}</div><div class="metric-sub">${(s.share*100).toFixed(2)}% of fund</div></div>
@@ -7000,7 +7308,7 @@ function renderMemberDetail(name,targetId){
     const navNeeded=breakEvenNav-currentNAV;
     const navNeededPct=(navNeeded/currentNAV*100).toFixed(2);
     h+=`<div style="background:#fcebeb;border:0.5px solid #f09595;border-radius:10px;padding:13px 15px;margin-bottom:12px">
-      <div style="font-size:13px;font-weight:600;color:#791f1f;margin-bottom:6px">&#9660; ${name} is currently underwater</div>
+      <div style="font-size:13px;font-weight:600;color:#791f1f;margin-bottom:6px">&#9660; ${esc(name)} is currently underwater</div>
       <div style="font-size:12px;color:#5f5e5a;line-height:1.8">
         Current value <strong style="color:#a32d2d">${fmt(s.currentValue)}</strong> is below cost basis of <strong>${fmt(s.myAmount)}</strong> — an unrealised loss of <strong style="color:#a32d2d">${fmt(Math.abs(s.unrealisedGL))}</strong>.<br>
         The fund NAV needs to rise by <strong>${getCurrency()}${navNeeded.toLocaleString(undefined,{minimumFractionDigits:4,maximumFractionDigits:4})}</strong> (<strong>+${navNeededPct}%</strong>)
@@ -7047,7 +7355,7 @@ function renderMemberDetail(name,targetId){
         ?'<span style="background:#fcebeb;color:#791f1f;font-size:10px;padding:2px 6px;border-radius:4px">Underwater</span>'
         :'<span style="background:#eaf3de;color:#27500a;font-size:10px;padding:2px 6px;border-radius:4px">In profit</span>';
       return `<tr>
-        <td style="padding:4px 6px;border-bottom:0.5px solid #e8e6df">${lot.date}</td>
+        <td style="padding:4px 6px;border-bottom:0.5px solid #e8e6df">${esc(lot.date)}</td>
         <td style="text-align:right;padding:4px 6px;border-bottom:0.5px solid #e8e6df">${fmt(lot.amount)}</td>
         <td style="text-align:right;padding:4px 6px;border-bottom:0.5px solid #e8e6df">${fmt(lot.nav)}</td>
         <td style="text-align:right;padding:4px 6px;border-bottom:0.5px solid #e8e6df">${fmtU(lot.units)}</td>
@@ -7082,8 +7390,8 @@ function renderMemberDetail(name,targetId){
       const unitSign=t.sign>=0?'+':'-';
       const runningSnapshot=runUnits;
       return `<tr>
-        <td>${t.date}</td>
-        <td><span style="display:inline-block;font-size:10px;padding:2px 7px;border-radius:6px;font-weight:600;${badgeSt}">${t.type}</span></td>
+        <td>${esc(t.date)}</td>
+        <td><span style="display:inline-block;font-size:10px;padding:2px 7px;border-radius:6px;font-weight:600;${badgeSt}">${esc(t.type)}</span></td>
         <td class="num" style="color:${t.sign>=0?'#1a1a18':'#a32d2d'}">${amtCell}</td>
         <td class="num">${navCell}</td>
         <td class="num" style="color:${t.sign>=0?'#3b6d11':'#a32d2d'}">${unitSign}${fmtU(t.units)}</td>
@@ -7382,6 +7690,7 @@ function onKYCMemberChange(name){
     return;
   }
   kycEditMode=false;
+  if(!kycLoaded&&canUseKYC()) loadKYCFromCloud(); // v3.36.0 — redraws the form once records arrive
   loadKYCForm(name);
   renderKYCMembersOverview();
 }
@@ -7408,7 +7717,7 @@ function loadKYCForm(name){
   if(hasSaved && !kycEditMode){
     // locked — show read-only
     setKYCFieldsDisabled(true);
-    badge.innerHTML=`<div class="kyc-badge kyc-badge-ok">&#10003; KYC on file — ${d.savedAt}</div>`;
+    badge.innerHTML=`<div class="kyc-badge kyc-badge-ok">&#10003; KYC on file — ${esc(d.savedAt)}</div>`;
     document.getElementById('kyc-edit-btn').style.display='inline-block';
     document.getElementById('kyc-clear-btn').style.display='none';
     document.getElementById('kyc-save-btn').style.display='none';
@@ -7418,7 +7727,7 @@ function loadKYCForm(name){
     if(hasSaved){
       badge.innerHTML=`<div class="kyc-badge kyc-badge-missing">&#9998; Editing — save to confirm changes</div>`;
     } else {
-      badge.innerHTML=`<div class="kyc-badge kyc-badge-missing">&#9888; No KYC on file for ${name}</div>`;
+      badge.innerHTML=`<div class="kyc-badge kyc-badge-missing">&#9888; No KYC on file for ${esc(name)}</div>`;
     }
     document.getElementById('kyc-edit-btn').style.display='none';
     document.getElementById('kyc-clear-btn').style.display='inline-block';
@@ -7439,6 +7748,7 @@ function saveKYC(){
   if(!getVal('kyc-bank1-name')||!getVal('kyc-bank1-number')||!getVal('kyc-bank1-bank')){
     alert('Please complete the primary bank account details.'); return;
   }
+  if(!kycLoaded){ alert('KYC records have not loaded from the cloud yet (you may be offline). Reconnect and reopen the KYC tab, then save again.'); return; }
   const savedAt=new Date().toLocaleString();
   kycData[name]={
     nok:{ name:getVal('kyc-nok-name'), dob:getVal('kyc-nok-dob'), gender:getVal('kyc-nok-gender'),
@@ -7450,7 +7760,7 @@ function saveKYC(){
     savedAt
   };
   kycEditMode=false;
-  save();
+  saveKYCRecordCloud(name,kycData[name]); // v3.36.0 — cloud-only store, not save()
   loadKYCForm(name);
   renderKYCMembersOverview();
 }
@@ -7466,8 +7776,8 @@ function renderKYCMembersOverview(){
 
   function row(label,val){
     return `<tr>
-      <td style="color:#5f5e5a;width:40%;padding:6px 6px;border-bottom:0.5px solid #d3d1c7;font-size:12px;white-space:nowrap">${label}</td>
-      <td style="font-weight:500;padding:6px 6px;border-bottom:0.5px solid #d3d1c7;font-size:12px">${val||'<span style="color:#b4b2a9">—</span>'}</td>
+      <td style="color:#5f5e5a;width:40%;padding:6px 6px;border-bottom:0.5px solid #d3d1c7;font-size:12px;white-space:nowrap">${esc(label)}</td>
+      <td style="font-weight:500;padding:6px 6px;border-bottom:0.5px solid #d3d1c7;font-size:12px">${val?esc(val):'<span style="color:#b4b2a9">—</span>'}</td>
     </tr>`;
   }
 
@@ -7477,7 +7787,7 @@ function renderKYCMembersOverview(){
   members.forEach((m,i)=>{
     const hasKYC=kycData[m]&&kycData[m].savedAt;
     const dot=hasKYC?'<span style="color:#639922;font-size:9px">&#9679;</span> ':'<span style="color:#d07a2a;font-size:9px">&#9675;</span> ';
-    html+=`<button class="tab-btn" id="kyc-tab-${i}" onclick="showKYCTab(${i},${members.length})" style="font-size:12px">${dot}${m}</button>`;
+    html+=`<button class="tab-btn" id="kyc-tab-${i}" onclick="showKYCTab(${i},${members.length})" style="font-size:12px">${dot}${esc(m)}</button>`;
   });
   html+='</div>';
 
@@ -7487,9 +7797,9 @@ function renderKYCMembersOverview(){
     const hasSaved=!!d.savedAt;
     html+=`<div id="kyc-tab-panel-${i}" style="display:${i===0?'block':'none'};border:1px solid #d3d1c7;border-top:none;border-radius:0 0 12px 12px;background:#fff;padding:14px">`;
     if(!hasSaved){
-      html+=`<div class="empty" style="padding:24px">&#9888; No KYC information saved for <strong>${m}</strong> yet.</div>`;
+      html+=`<div class="empty" style="padding:24px">&#9888; No KYC information saved for <strong>${esc(m)}</strong> yet.</div>`;
     } else {
-      html+=`<div style="font-size:11px;color:#888780;margin-bottom:10px">Last updated: ${d.savedAt}</div>`;
+      html+=`<div style="font-size:11px;color:#888780;margin-bottom:10px">Last updated: ${esc(d.savedAt)}</div>`;
       // NOK
       html+=`<div style="font-size:11px;font-weight:600;color:#633806;text-transform:uppercase;letter-spacing:.05em;padding-bottom:5px;border-bottom:1px solid #f0d98a;margin-bottom:8px">&#128100; Next of kin</div>`;
       html+=`<div style="display:grid;grid-template-columns:1fr 1fr;gap:0 24px;margin-bottom:14px">
@@ -7569,7 +7879,7 @@ function jrnResolveAccount(text){
 function refreshJournalLineAccountOptions(){
   let dl=document.getElementById('jrn-account-list');
   if(!dl){dl=document.createElement('datalist');dl.id='jrn-account-list';document.body.appendChild(dl);}
-  dl.innerHTML=[...getAllAccounts()].sort((a,b)=>a.code.localeCompare(b.code)).map(a=>`<option value="${a.code} — ${a.name}"></option>`).join('');
+  dl.innerHTML=[...getAllAccounts()].sort((a,b)=>a.code.localeCompare(b.code)).map(a=>`<option value="${esc(a.code)} — ${esc(a.name)}"></option>`).join('');
   // re-normalise any typed text that matches an account whose name may have just changed
   document.querySelectorAll('.jrn-line-account').forEach(inp=>{
     const code=jrnResolveAccount(inp.value);
@@ -7722,9 +8032,9 @@ function editJournalEntry(id){
   if(isValuation){
     warnText=' &nbsp;<strong>Note:</strong> fair value adjustments are regenerated automatically from the Valuation tab — to remove or change this permanently, edit or delete the valuation record instead.';
   } else if(isAuto){
-    warnText=` &nbsp;this was posted automatically from a <strong>${SOURCE_LABELS[e.sourceType]||e.sourceType}</strong> transaction. Editing here only changes the journal — it will not update the original record. Consider editing the source transaction instead for consistency.`;
+    warnText=` &nbsp;this was posted automatically from a <strong>${esc(SOURCE_LABELS[e.sourceType]||e.sourceType)}</strong> transaction. Editing here only changes the journal — it will not update the original record. Consider editing the source transaction instead for consistency.`;
   }
-  banner.innerHTML=`<div style="margin-bottom:8px">&#9998; <strong>Editing entry: ${e.description}</strong>${warnText}</div>
+  banner.innerHTML=`<div style="margin-bottom:8px">&#9998; <strong>Editing entry: ${esc(e.description)}</strong>${warnText}</div>
     <div style="display:flex;gap:6px">
       <button onclick="saveJournalEdit(${id})" style="background:#1d6f42;border-color:#1d6f42;color:#fff;font-size:12px;padding:5px 12px">&#10003; Update entry</button>
       <button onclick="cancelJournalEdit()" style="font-size:12px;padding:5px 10px;color:#a32d2d;border-color:#f09595">&#10005; Cancel</button>
@@ -7806,15 +8116,15 @@ function renderJournal(){
   entries.forEach(e=>{
     stripe=!stripe;
     const bg=stripe?'#fafaf8':'';
-    const srcTag=`<span class="tag ${SOURCE_COLORS[e.sourceType]||'tag-amber'}" style="font-size:10px">${SOURCE_LABELS[e.sourceType]||e.sourceType}</span>`;
+    const srcTag=`<span class="tag ${SOURCE_COLORS[e.sourceType]||'tag-amber'}" style="font-size:10px">${esc(SOURCE_LABELS[e.sourceType]||e.sourceType)}</span>`;
     const actionCell=`<div style="display:flex;gap:4px">
-        <button onclick="editJournalEntry(${e.id})" style="padding:3px 7px;font-size:11px" title="Edit entry">&#9998;</button>
-        <button class="btn-danger" onclick="deleteJournalEntry(${e.id})" style="padding:3px 7px;font-size:11px" title="Delete entry">&#128465;</button>
+        <button onclick="editJournalEntry(${jsNum(e.id)})" style="padding:3px 7px;font-size:11px" title="Edit entry">&#9998;</button>
+        <button class="btn-danger" onclick="deleteJournalEntry(${jsNum(e.id)})" style="padding:3px 7px;font-size:11px" title="Delete entry">&#128465;</button>
       </div>`;
     e.lines.forEach((l,i)=>{
       h+=`<tr style="background:${bg}">
-        ${i===0?`<td rowspan="${e.lines.length}">${e.date}</td><td rowspan="${e.lines.length}">${e.description}</td><td rowspan="${e.lines.length}">${srcTag}</td>`:''}
-        <td style="padding-left:${i>0?'20px':'6px'}">${i>0?'└ ':''}${getAccountName(l.account)}</td>
+        ${i===0?`<td rowspan="${e.lines.length}">${esc(e.date)}</td><td rowspan="${e.lines.length}">${esc(e.description)}</td><td rowspan="${e.lines.length}">${srcTag}</td>`:''}
+        <td style="padding-left:${i>0?'20px':'6px'}">${i>0?'└ ':''}${esc(getAccountName(l.account))}</td>
         <td class="num">${l.debit?fmt(l.debit):''}</td>
         <td class="num">${l.credit?fmt(l.credit):''}</td>
         ${i===0?`<td rowspan="${e.lines.length}">${actionCell}</td>`:''}
@@ -7841,7 +8151,7 @@ function populateSettleAccountDropdowns(){
     const sel=document.getElementById(id);
     if(!sel) return;
     const prev=sel.value;
-    sel.innerHTML=assetAccts.map(a=>`<option value="${a.code}">${a.code} — ${a.name}</option>`).join('');
+    sel.innerHTML=assetAccts.map(a=>`<option value="${esc(a.code)}">${esc(a.code)} — ${esc(a.name)}</option>`).join('');
     if(prev&&assetAccts.find(a=>a.code===prev)) sel.value=prev;
     else if(assetAccts.find(a=>a.code==='1000')) sel.value='1000';
   });
@@ -7876,7 +8186,7 @@ function getCashAccountTree(){
 function syncPortDefaultAccountDropdown(){
   const sel=document.getElementById('port-default-account');if(!sel)return;
   const prev=sel.value;
-  sel.innerHTML='<option value="">— None —</option>'+getCashAccountTree().map(a=>`<option value="${a.code}">${a.code} — ${a.name}</option>`).join('');
+  sel.innerHTML='<option value="">— None —</option>'+getCashAccountTree().map(a=>`<option value="${esc(a.code)}">${esc(a.code)} — ${esc(a.name)}</option>`).join('');
   if(prev&&[...sel.options].some(o=>o.value===prev)) sel.value=prev;
 }
 /* Pre-selects a settlement dropdown with the Register entry's default funding account.
@@ -7938,9 +8248,9 @@ function renderLedgerView(){
   }
   lines.forEach(l=>{
     running += normalDebit?(l.debit-l.credit):(l.credit-l.debit);
-    const srcTag=`<span class="tag ${SOURCE_COLORS[l.source]||'tag-amber'}" style="font-size:10px">${SOURCE_LABELS[l.source]||l.source}</span>`;
+    const srcTag=`<span class="tag ${SOURCE_COLORS[l.source]||'tag-amber'}" style="font-size:10px">${esc(SOURCE_LABELS[l.source]||l.source)}</span>`;
     h+=`<tr>
-      <td>${l.date}</td><td>${l.description}</td><td>${srcTag}</td>
+      <td>${esc(l.date)}</td><td>${esc(l.description)}</td><td>${srcTag}</td>
       <td class="num">${l.debit?fmt(l.debit):''}</td><td class="num">${l.credit?fmt(l.credit):''}</td>
       <td class="num" style="font-weight:600">${fmt(Math.abs(running))}${running<0?' (cr)':''}</td>
     </tr>`;
@@ -7971,9 +8281,9 @@ function renderTrialBalance(){
     const creditCol=normalDebit?Math.max(-bal,0):Math.max(bal,0);
     totD+=debitCol;totC+=creditCol;
     h+=`<tr>
-      <td style="font-weight:600;color:#0c447c">${a.code}</td>
-      <td>${a.name}</td>
-      <td><span class="tag tag-purple" style="font-size:10px">${a.type}</span></td>
+      <td style="font-weight:600;color:#0c447c">${esc(a.code)}</td>
+      <td>${esc(a.name)}</td>
+      <td><span class="tag tag-purple" style="font-size:10px">${esc(a.type)}</span></td>
       <td class="num">${debitCol?fmt(debitCol):''}</td>
       <td class="num">${creditCol?fmt(creditCol):''}</td>
     </tr>`;
@@ -7997,7 +8307,7 @@ function statRow(label,value,opts){
   const border=opts.border?'border-top:1px solid #b4b2a9;padding-top:6px;margin-top:2px':'';
   const color=opts.color||'#1a1a18';
   return `<div style="display:flex;justify-content:space-between;padding:4px 0;${border}">
-    <span style="${bold};${indent};color:${opts.labelColor||'#1a1a18'}">${label}</span>
+    <span style="${bold};${indent};color:${opts.labelColor||'#1a1a18'}">${esc(label)}</span>
     <span style="${bold};color:${color};font-variant-numeric:tabular-nums">${value}</span>
   </div>`;
 }
@@ -8198,15 +8508,15 @@ function renderCorpActionsLog(){
   sortedActions.forEach(c=>{
     const isEd=c.id===editingId;
     const rowBg=isEd?'#eaf6ef':'';
-    rows+=`<tr style="cursor:pointer;background:${rowBg}" onclick="editCorpAction(${c.id})"
+    rows+=`<tr style="cursor:pointer;background:${rowBg}" onclick="editCorpAction(${jsNum(c.id)})"
       onmouseover="this.style.background='${isEd?'#d6eedf':'#f4f4f2'}'"
       onmouseout="this.style.background='${rowBg}'" title="Click to edit">
-      <td>${c.date}</td>
-      <td style="font-size:11px;font-weight:600;color:${c.assetId==='FUND'?'#633806':'#0c447c'}">${c.assetId==='FUND'?'Fund level':c.assetId}</td>
-      <td><span class="tag ${CA_TYPE_COLORS[c.actionType]||'tag-amber'}">${c.actionType}</span></td>
-      <td style="font-size:12px">${c.details||'—'}</td>
-      <td style="font-size:12px">${c.note||'—'}</td>
-      <td onclick="event.stopPropagation()"><button class="btn-danger" onclick="removeCorpAction(${c.id})" style="padding:3px 7px;font-size:11px">&#128465;</button></td>
+      <td>${esc(c.date)}</td>
+      <td style="font-size:11px;font-weight:600;color:${c.assetId==='FUND'?'#633806':'#0c447c'}">${c.assetId==='FUND'?'Fund level':esc(c.assetId)}</td>
+      <td><span class="tag ${CA_TYPE_COLORS[c.actionType]||'tag-amber'}">${esc(c.actionType)}</span></td>
+      <td style="font-size:12px">${esc(c.details||'—')}</td>
+      <td style="font-size:12px">${esc(c.note||'—')}</td>
+      <td onclick="event.stopPropagation()"><button class="btn-danger" onclick="removeCorpAction(${jsNum(c.id)})" style="padding:3px 7px;font-size:11px">&#128465;</button></td>
     </tr>`;
   });
   wrap.innerHTML='<div style="overflow-x:auto"><table><thead><tr>'
@@ -8313,17 +8623,17 @@ function onStockDivStockChange(){
 }
 function syncStockDropdowns(){
   const holdingsDl=document.getElementById('stock-holdings-list');
-  if(holdingsDl) holdingsDl.innerHTML=[...new Set(stockHoldings.map(h=>h.ticker))].sort().map(t=>`<option value="${t}">${stockCompanyName(t)||''}</option>`).join('');
+  if(holdingsDl) holdingsDl.innerHTML=[...new Set(stockHoldings.map(h=>h.ticker))].sort().map(t=>`<option value="${esc(t)}">${esc(stockCompanyName(t)||'')}</option>`).join('');
   const allTickers=[...new Set([...STOCK_DIRECTORY.map(s=>s.symbol),...stockHoldings.map(h=>h.ticker),...stockTxns.map(t=>t.stock)])].sort();
   const dl=document.getElementById('stock-ticker-list');
-  if(dl) dl.innerHTML=allTickers.map(t=>`<option value="${t}">`).join('');
+  if(dl) dl.innerHTML=allTickers.map(t=>`<option value="${esc(t)}">`).join('');
   const brokerDl=document.getElementById('stock-broker-list');
-  if(brokerDl) brokerDl.innerHTML=brokerRegistry.map(b=>`<option value="${b.name}">`).join('');
+  if(brokerDl) brokerDl.innerHTML=brokerRegistry.map(b=>`<option value="${esc(b.name)}">`).join('');
   const filterSel=document.getElementById('stx-filter-stock');
   if(filterSel){
     const prev=filterSel.value;
     const heldTickers=[...new Set(stockTxns.map(t=>t.stock))].sort();
-    filterSel.innerHTML='<option value="">All stocks</option>'+heldTickers.map(t=>`<option value="${t}">${t}</option>`).join('');
+    filterSel.innerHTML='<option value="">All stocks</option>'+heldTickers.map(t=>`<option value="${esc(t)}">${esc(t)}</option>`).join('');
     if(prev&&heldTickers.includes(prev)) filterSel.value=prev;
   }
   syncStockAssetIdDropdown();
@@ -8480,16 +8790,16 @@ function renderStockHoldings(){
     const mv=(hd.shares||0)*(hd.price||0);
     sumCost+=cost;sumMV+=mv;
     const chgCol=mv>=cost?'#3b6d11':'#a32d2d';
-    h+=`<tr style="cursor:pointer" onclick="editStockHolding('${hd.ticker}')" onmouseover="this.style.background='#f4f4f2'" onmouseout="this.style.background=''">
-      <td><strong style="color:#0c447c">${hd.ticker}</strong><div style="font-size:11px;color:#888780">${hd.company||''}</div></td>
-      <td>${hd.sector?`<span class="tag ${STOCK_SECTOR_TAG[hd.sector]||'tag-amber'}" style="font-size:10px">${hd.sector}</span>`:'—'}</td>
+    h+=`<tr style="cursor:pointer" onclick="editStockHolding('${jsArg(hd.ticker)}')" onmouseover="this.style.background='#f4f4f2'" onmouseout="this.style.background=''">
+      <td><strong style="color:#0c447c">${esc(hd.ticker)}</strong><div style="font-size:11px;color:#888780">${esc(hd.company||'')}</div></td>
+      <td>${hd.sector?`<span class="tag ${STOCK_SECTOR_TAG[hd.sector]||'tag-amber'}" style="font-size:10px">${esc(hd.sector)}</span>`:'—'}</td>
       <td class="num">${fmtU(hd.shares||0)}</td>
       <td class="num">${dca?fmt(dca):'—'}</td>
       <td class="num">${fmt(hd.price||0)}</td>
       <td class="num">${fmt(cost)}</td>
       <td class="num" style="font-weight:600">${fmt(mv)}</td>
       <td class="num" style="color:${chgCol}">${cost>0?(mv>=cost?'+':'')+((mv-cost)/cost*100).toFixed(1)+'%':'—'}</td>
-      <td onclick="event.stopPropagation()">${(hd.shares||0)<0.0001?`<button class="btn-danger" onclick="removeStockHolding('${hd.ticker}')" style="padding:3px 7px;font-size:11px">&#128465;</button>`:''}</td>
+      <td onclick="event.stopPropagation()">${(hd.shares||0)<0.0001?`<button class="btn-danger" onclick="removeStockHolding('${jsArg(hd.ticker)}')" style="padding:3px 7px;font-size:11px">&#128465;</button>`:''}</td>
     </tr>`;
   });
   h+=`<tr class="tfoot-row"><td colspan="5">Total (${sorted.length})</td><td class="num">${fmt(sumCost)}</td><td class="num">${fmt(sumMV)}</td><td colspan="2"></td></tr>`;
@@ -8640,20 +8950,20 @@ function renderStockTxnLedger(){
     if(isSell) totSell+=t.totalAmt||0; else totBuy+=t.totalAmt||0;
     const isEd=t.id===editingId;
     const rowBg=isEd?'#eaf6ef':'';
-    h+=`<tr style="cursor:pointer;background:${rowBg}" onclick="editStockTxn(${t.id})"
+    h+=`<tr style="cursor:pointer;background:${rowBg}" onclick="editStockTxn(${jsNum(t.id)})"
       onmouseover="this.style.background='${isEd?'#d6eedf':'#f4f4f2'}'"
       onmouseout="this.style.background='${rowBg}'" title="Click to edit">
-      <td>${t.date}</td>
-      <td style="font-weight:600;color:#0c447c">${t.stock}</td>
-      <td style="font-size:11px;color:${t.assetId?'#0c447c':'#c4c2bc'}">${t.assetId||'—'}</td>
+      <td>${esc(t.date)}</td>
+      <td style="font-weight:600;color:#0c447c">${esc(t.stock)}</td>
+      <td style="font-size:11px;color:${t.assetId?'#0c447c':'#c4c2bc'}">${esc(t.assetId||'—')}</td>
       <td><span class="tag ${isSell?'tag-red':'tag-green'}">${isSell?'Sell':'Buy'}</span></td>
       <td class="num">${Number(t.units).toLocaleString()}</td>
       <td class="num">${fmtN(t.price)}</td>
       <td class="num">${t.charges?fmtN(t.charges):'—'}</td>
       <td class="num" style="font-weight:600;color:${isSell?'#a32d2d':'#1a1a18'}">${isSell?'−':''}${fmt(t.totalAmt)}</td>
-      <td style="font-size:12px">${t.broker||'—'}</td>
-      <td style="font-size:12px">${t.note||'—'}</td>
-      <td onclick="event.stopPropagation()"><button class="btn-danger" onclick="removeStockTxn(${t.id})" style="padding:3px 7px;font-size:11px">&#128465;</button></td>
+      <td style="font-size:12px">${esc(t.broker||'—')}</td>
+      <td style="font-size:12px">${esc(t.note||'—')}</td>
+      <td onclick="event.stopPropagation()"><button class="btn-danger" onclick="removeStockTxn(${jsNum(t.id)})" style="padding:3px 7px;font-size:11px">&#128465;</button></td>
     </tr>`;
   });
   h+=`<tr class="tfoot-row"><td colspan="7">Total (${rows.length}) — Bought ${fmt(totBuy)} / Sold ${fmt(totSell)}</td><td class="num">${fmt(totBuy-totSell)}</td><td colspan="3"></td></tr>`;
@@ -8759,16 +9069,16 @@ function renderStockDividends(){
     const shares=getStockSharesAsOf(d.stock,d.qualDate);
     totGross+=d.gross||0;totWHT+=d.whtAmt||0;totRec+=d.received||0;
     const stCl=d.status==='paid'?'tag-green':d.status==='reinvested'?'tag-blue':'tag-amber';
-    h+=`<tr style="cursor:pointer" onclick="loadStockDividendForEdit('${d.id}')" onmouseover="this.style.background='#f4f4f2'" onmouseout="this.style.background=''">
-      <td><strong style="color:#0c447c">${d.stock}</strong></td>
-      <td class="num">${d.year}</td>
+    h+=`<tr style="cursor:pointer" onclick="loadStockDividendForEdit('${jsArg(d.id)}')" onmouseover="this.style.background='#f4f4f2'" onmouseout="this.style.background=''">
+      <td><strong style="color:#0c447c">${esc(d.stock)}</strong></td>
+      <td class="num">${esc(d.year)}</td>
       <td class="num">${Number(shares).toLocaleString()}</td>
       <td class="num">${fmtN(d.dps)}</td>
       <td class="num">${d.gross>0?fmt(d.gross):'—'}</td>
       <td class="num" style="color:#a32d2d">${d.whtAmt>0?fmt(d.whtAmt):'—'}</td>
       <td class="num" style="font-weight:600">${d.received>0?fmt(d.received):'—'}</td>
-      <td><span class="tag ${stCl}">${d.status||'pending'}</span></td>
-      <td onclick="event.stopPropagation()"><button class="btn-danger" onclick="removeStockDividend('${d.id}')" style="padding:3px 7px;font-size:11px">&#128465;</button></td>
+      <td><span class="tag ${stCl}">${esc(d.status||'pending')}</span></td>
+      <td onclick="event.stopPropagation()"><button class="btn-danger" onclick="removeStockDividend('${jsArg(d.id)}')" style="padding:3px 7px;font-size:11px">&#128465;</button></td>
     </tr>`;
   });
   h+=`<tr class="tfoot-row"><td colspan="4">Total (${sorted.length})</td><td class="num">${fmt(totGross)}</td><td class="num" style="color:#a32d2d">${fmt(totWHT)}</td><td class="num">${fmt(totRec)}</td><td colspan="2"></td></tr>`;
@@ -8940,7 +9250,7 @@ function syncTransferMemberLists(){
   const names=[...new Set([...membersRegistry.filter(m=>m.active!==false).map(m=>m.name),...deposits.map(d=>d.member)])];
   ['trf-member-list-from','trf-member-list-to'].forEach(dlId=>{
     const dl=document.getElementById(dlId);
-    if(dl)dl.innerHTML=names.map(n=>`<option value="${n}">`).join('');
+    if(dl)dl.innerHTML=names.map(n=>`<option value="${esc(n)}">`).join('');
   });
 }
 function getMemberNetUnits(name){
@@ -8958,7 +9268,7 @@ function previewTransfer(){
   const netUnits=getMemberNetUnits(from);
   const nav=getCurrentNAV();
   const col=units>netUnits&&units>0?'#a32d2d':'#3b6d11';
-  preview.innerHTML=`<span style="color:${col}">${from} currently holds <strong>${fmtU(netUnits)}</strong> units (${fmt(netUnits*nav)} at current NAV).${units>netUnits&&units>0?' &#9888; Insufficient units for this transfer.':''}</span>`;
+  preview.innerHTML=`<span style="color:${col}">${esc(from)} currently holds <strong>${fmtU(netUnits)}</strong> units (${fmt(netUnits*nav)} at current NAV).${units>netUnits&&units>0?' &#9888; Insufficient units for this transfer.':''}</span>`;
 }
 function clearTransferForm(){
   document.getElementById('trf-from').value='';
@@ -9041,16 +9351,16 @@ function renderTransferLedger(){
     totalUnits+=t.units;
     const isEd=t.id===editingId;
     const rowBg=isEd?'#fff8e8':'';
-    rows+=`<tr style="cursor:pointer;background:${rowBg}" onclick="editTransfer(${t.id})"
+    rows+=`<tr style="cursor:pointer;background:${rowBg}" onclick="editTransfer(${jsNum(t.id)})"
       onmouseover="this.style.background='${isEd?'#fdf0cc':'#f4f4f2'}'"
       onmouseout="this.style.background='${rowBg}'" title="Click to edit">
-      <td>${t.date}</td>
-      <td style="font-weight:600;color:#a32d2d">${t.fromMember}</td>
+      <td>${esc(t.date)}</td>
+      <td style="font-weight:600;color:#a32d2d">${esc(t.fromMember)}</td>
       <td style="text-align:center;color:#888780;font-size:16px">&#8646;</td>
-      <td style="font-weight:600;color:#3b6d11">${t.toMember}</td>
+      <td style="font-weight:600;color:#3b6d11">${esc(t.toMember)}</td>
       <td class="num" style="font-weight:600;color:#0c447c">${fmtU(t.units)}</td>
-      <td style="font-size:12px;color:#5f5e5a">${t.note||'—'}</td>
-      <td onclick="event.stopPropagation()"><button class="btn-danger" onclick="removeTransfer(${t.id})" style="padding:3px 7px;font-size:11px">&#128465;</button></td>
+      <td style="font-size:12px;color:#5f5e5a">${esc(t.note||'—')}</td>
+      <td onclick="event.stopPropagation()"><button class="btn-danger" onclick="removeTransfer(${jsNum(t.id)})" style="padding:3px 7px;font-size:11px">&#128465;</button></td>
     </tr>`;
   });
   wrap.innerHTML='<div style="overflow-x:auto"><table><thead><tr>'
@@ -9136,7 +9446,7 @@ function validateSaleCostBasis(){
   const available=computeRemainingCostBasis(assetId,date,editId);
   if(entered>available+0.01){
     warnEl.style.display='block';
-    warnEl.innerHTML=`&#9888; This is ${fmt(entered-available)} more than the ${fmt(available)} actually remaining in ${assetId}'s cost pool as of ${date}. Saving this will leave less than zero cost basis for later redemptions of this asset (clamped to zero), understating their gain.`;
+    warnEl.innerHTML=`&#9888; This is ${fmt(entered-available)} more than the ${fmt(available)} actually remaining in ${esc(assetId)}'s cost pool as of ${esc(date)}. Saving this will leave less than zero cost basis for later redemptions of this asset (clamped to zero), understating their gain.`;
     return false;
   }
   warnEl.style.display='none';
@@ -9282,18 +9592,18 @@ function renderSalesLedger(){
     const isEd=s.id===editingId;
     const glColor=s.gl>=0?'#3b6d11':'#a32d2d';
     const rowBg=isEd?'#eaf6ef':'';
-    rows+=`<tr style="cursor:pointer;background:${rowBg}" onclick="editSale(${s.id})"
+    rows+=`<tr style="cursor:pointer;background:${rowBg}" onclick="editSale(${jsNum(s.id)})"
       onmouseover="this.style.background='${isEd?'#d6eedf':'#f4f4f2'}'"
       onmouseout="this.style.background='${rowBg}'" title="Click to edit">
-      <td>${s.date}</td>
-      <td style="font-size:11px;font-weight:600;color:#0c447c">${s.assetId}</td>
-      <td><span class="tag tag-purple">${getAssetLabelFull(s.assetType)||'—'}</span></td>
+      <td>${esc(s.date)}</td>
+      <td style="font-size:11px;font-weight:600;color:#0c447c">${esc(s.assetId)}</td>
+      <td><span class="tag tag-purple">${esc(getAssetLabelFull(s.assetType)||'—')}</span></td>
       <td><span class="tag ${s.redemptionType==='full'?'tag-red':'tag-amber'}">${s.redemptionType==='full'?'Full':'Partial'}</span></td>
       <td class="num">${fmt(s.costBasis)}</td>
       <td class="num" style="font-weight:500">${fmt(s.proceeds)}</td>
       <td class="num" style="font-weight:600;color:${glColor}">${s.gl>=0?'+':''}${fmt(s.gl)}</td>
-      <td style="font-size:12px">${s.note||'—'}</td>
-      <td onclick="event.stopPropagation()"><button class="btn-danger" onclick="removeSale(${s.id})" style="padding:3px 7px;font-size:11px">&#128465;</button></td>
+      <td style="font-size:12px">${esc(s.note||'—')}</td>
+      <td onclick="event.stopPropagation()"><button class="btn-danger" onclick="removeSale(${jsNum(s.id)})" style="padding:3px 7px;font-size:11px">&#128465;</button></td>
     </tr>`;
   });
   const glColor=totGL>=0?'#3b6d11':'#a32d2d';
@@ -9422,16 +9732,16 @@ function renderIncomeLedger(){
     const isEd=r.id===editingId;
     const rowBg=isEd?'#eaf6ef':'';
     const tagClass=typeColors[r.incomeType]||'tag-amber';
-    rows+=`<tr style="cursor:pointer;background:${rowBg}" onclick="editIncome(${r.id})"
+    rows+=`<tr style="cursor:pointer;background:${rowBg}" onclick="editIncome(${jsNum(r.id)})"
       onmouseover="this.style.background='${isEd?'#d6eedf':'#f4f4f2'}'"
       onmouseout="this.style.background='${rowBg}'" title="Click to edit">
-      <td>${r.date}</td>
-      <td style="font-size:11px;font-weight:600;color:#0c447c">${r.assetId==='FUND'?'Fund level':r.assetId}</td>
-      <td><span class="tag tag-purple">${r.assetId==='FUND'?'—':getAssetLabelFull(r.assetType)||'—'}</span></td>
-      <td><span class="tag ${tagClass}">${r.incomeType}</span></td>
+      <td>${esc(r.date)}</td>
+      <td style="font-size:11px;font-weight:600;color:#0c447c">${r.assetId==='FUND'?'Fund level':esc(r.assetId)}</td>
+      <td><span class="tag tag-purple">${r.assetId==='FUND'?'—':esc(getAssetLabelFull(r.assetType)||'—')}</span></td>
+      <td><span class="tag ${tagClass}">${esc(r.incomeType)}</span></td>
       <td class="num" style="font-weight:600;color:#3b6d11">${fmt(r.amount)}</td>
-      <td style="font-size:12px">${r.note||'—'}</td>
-      <td onclick="event.stopPropagation()"><button class="btn-danger" onclick="removeIncome(${r.id})" style="padding:3px 7px;font-size:11px">&#128465;</button></td>
+      <td style="font-size:12px">${esc(r.note||'—')}</td>
+      <td onclick="event.stopPropagation()"><button class="btn-danger" onclick="removeIncome(${jsNum(r.id)})" style="padding:3px 7px;font-size:11px">&#128465;</button></td>
     </tr>`;
   });
   wrap.innerHTML='<div style="overflow-x:auto"><table><thead><tr>'
@@ -9478,7 +9788,7 @@ function renderFundSnapshotBreakdown(){
   const rows=getFundSnapshotRows();
   if(!rows.length){wrap.innerHTML='<div class="empty">No investments registered yet — add one via Portfolio → Mutual Funds → Register.</div>';return;}
   const lastVal=navValuations.length?[...navValuations].sort((a,b)=>b.date.localeCompare(a.date))[0]:null;
-  const asOfNote=lastVal?`Current values as of the ${lastVal.date} valuation where available.`:'No valuation recorded yet — current values are estimated from remaining cost basis.';
+  const asOfNote=lastVal?`Current values as of the ${esc(lastVal.date)} valuation where available.`:'No valuation recorded yet — current values are estimated from remaining cost basis.';
   let h=`<div style="font-size:11px;color:#888780;margin-bottom:8px">${asOfNote}</div>`;
   h+='<div style="overflow-x:auto"><table><thead><tr>'
     +'<th style="width:130px">Asset ID</th><th style="width:110px">Type</th><th>Broker</th>'
@@ -9493,9 +9803,9 @@ function renderFundSnapshotBreakdown(){
     const unrealCol=r.unrealizedGL>=0?'#3b6d11':'#a32d2d';
     const totCol=r.totalReturn>=0?'#3b6d11':'#a32d2d';
     h+=`<tr>
-      <td style="font-size:11px;font-weight:600;color:#0c447c">${r.assetId}${r.description?`<div style="font-size:10px;color:#888780;font-weight:400">${r.description}</div>`:''}</td>
-      <td><span class="tag tag-purple">${getAssetLabelFull(r.assetType)||'—'}</span></td>
-      <td style="font-size:12px">${r.broker||'—'}</td>
+      <td style="font-size:11px;font-weight:600;color:#0c447c">${esc(r.assetId)}${r.description?`<div style="font-size:10px;color:#888780;font-weight:400">${esc(r.description)}</div>`:''}</td>
+      <td><span class="tag tag-purple">${esc(getAssetLabelFull(r.assetType)||'—')}</span></td>
+      <td style="font-size:12px">${esc(r.broker||'—')}</td>
       <td class="num">${fmt(r.costBasis)}</td>
       <td class="num" style="font-weight:600">${fmt(r.currentValue)}${!r.hasMarketValue?'<div style="font-size:9px;color:#c9a227">est.</div>':''}</td>
       <td class="num" style="color:${realCol}">${r.realizedGL?((r.realizedGL>=0?'+':'')+fmt(r.realizedGL)):'—'}</td>
@@ -9574,8 +9884,8 @@ function renderPnL(){
       const sorted=Object.entries(byAsset).sort((a,b)=>b[1].total-a[1].total);
       let rows='';
       sorted.forEach(([key,a])=>{
-        const types=Object.entries(a.breakdown).map(([t,v])=>`<span class="tag tag-green" style="margin-right:3px">${t}: ${fmt(v)}</span>`).join('');
-        rows+=`<tr><td style="font-size:11px;font-weight:600;color:#0c447c">${key}</td><td>${a.label}</td><td>${types}</td><td class="num" style="font-weight:600;color:#3b6d11">${fmt(a.total)}</td></tr>`;
+        const types=Object.entries(a.breakdown).map(([t,v])=>`<span class="tag tag-green" style="margin-right:3px">${esc(t)}: ${fmt(v)}</span>`).join('');
+        rows+=`<tr><td style="font-size:11px;font-weight:600;color:#0c447c">${esc(key)}</td><td>${esc(a.label)}</td><td>${esc(types)}</td><td class="num" style="font-weight:600;color:#3b6d11">${fmt(a.total)}</td></tr>`;
       });
       const grand=incomeRecords.reduce((s,r)=>s+r.amount,0);
       incWrap.innerHTML='<div style="overflow-x:auto"><table><thead><tr>'
@@ -9594,10 +9904,10 @@ function renderPnL(){
       sales.forEach(s=>{
         tC+=s.costBasis;tP+=s.proceeds;tG+=s.gl;
         const col=s.gl>=0?'#3b6d11':'#a32d2d';
-        rows+=`<tr><td>${s.date}</td><td style="font-size:11px;font-weight:600;color:#0c447c">${s.assetId}</td>
+        rows+=`<tr><td>${esc(s.date)}</td><td style="font-size:11px;font-weight:600;color:#0c447c">${esc(s.assetId)}</td>
           <td class="num">${fmt(s.costBasis)}</td><td class="num">${fmt(s.proceeds)}</td>
           <td class="num" style="font-weight:600;color:${col}">${s.gl>=0?'+':''}${fmt(s.gl)}</td>
-          <td style="font-size:12px">${s.note||'—'}</td></tr>`;
+          <td style="font-size:12px">${esc(s.note||'—')}</td></tr>`;
       });
       const gc2=tG>=0?'#3b6d11':'#a32d2d';
       salWrap.innerHTML='<div style="overflow-x:auto"><table><thead><tr>'
@@ -9776,7 +10086,7 @@ function renderAllocationTable(){
   const {byType,total,source,asOf}=getActualAllocationByType();
   const {byType:investedByType}=getInvestedCostByType();
   const sourceNote=source==='valuation'
-    ?`Target and actual figures are both measured against the fund's total value from the portfolio valuation dated <strong>${asOf}</strong> (<strong>${fmt(total)}</strong>).`
+    ?`Target and actual figures are both measured against the fund's total value from the portfolio valuation dated <strong>${esc(asOf)}</strong> (<strong>${fmt(total)}</strong>).`
     :source==='purchases'
       ?`No valuation recorded yet — target and actual figures are estimated against total purchase cost (<strong>${fmt(total)}</strong>) as a stand-in for fund value.`
       :'No purchases or valuations recorded yet — allocation cannot be measured.';
@@ -9794,7 +10104,7 @@ function renderAllocationTable(){
     const barPct=Math.min(actualPct,100);
     const targetMarkerPct=Math.min(a.targetPct,100);
     rows+=`<tr>
-      <td><strong>${allocTypeLabel(a.assetType)}</strong>${a.note?`<div style="font-size:11px;color:#888780">${a.note}</div>`:''}</td>
+      <td><strong>${esc(allocTypeLabel(a.assetType))}</strong>${a.note?`<div style="font-size:11px;color:#888780">${a.note}</div>`:''}</td>
       <td class="num" style="font-weight:600">${a.targetPct.toFixed(1)}%</td>
       <td class="num" style="color:#0c447c">${total>0?fmt(targetAmount):'—'}</td>
       <td class="num">${actualPct.toFixed(1)}%</td>
@@ -9815,8 +10125,8 @@ function renderAllocationTable(){
       <td><span style="font-size:11px;color:${varColor}">${statusLabel}</span></td>
       <td onclick="event.stopPropagation()">
         <div style="display:flex;gap:4px">
-          <button onclick="editAllocationTarget(${a.id})" style="padding:3px 7px;font-size:11px">&#9998;</button>
-          <button class="btn-danger" onclick="removeAllocationTarget(${a.id})" style="padding:3px 7px;font-size:11px">&#128465;</button>
+          <button onclick="editAllocationTarget(${jsNum(a.id)})" style="padding:3px 7px;font-size:11px">&#9998;</button>
+          <button class="btn-danger" onclick="removeAllocationTarget(${jsNum(a.id)})" style="padding:3px 7px;font-size:11px">&#128465;</button>
         </div>
       </td>
     </tr>`;
@@ -9858,12 +10168,12 @@ function renderAllocationHistory(){
         ?`<span style="color:#a32d2d">${h.previousPct.toFixed(1)}% removed</span>`
         :`<strong>${h.targetPct.toFixed(1)}%</strong>`;
     rows+=`<tr>
-      <td>${h.date}</td>
-      <td><span class="tag ${ALLOC_HISTORY_ACTION_COLORS[h.action]||'tag-amber'}" style="font-size:10px">${ALLOC_HISTORY_ACTION_LABELS[h.action]||h.action}</span></td>
-      <td style="font-size:12px;font-weight:600">${allocTypeLabel(h.assetType)}</td>
+      <td>${esc(h.date)}</td>
+      <td><span class="tag ${ALLOC_HISTORY_ACTION_COLORS[h.action]||'tag-amber'}" style="font-size:10px">${esc(ALLOC_HISTORY_ACTION_LABELS[h.action]||h.action)}</span></td>
+      <td style="font-size:12px;font-weight:600">${esc(allocTypeLabel(h.assetType))}</td>
       <td class="num" style="font-size:12px">${pctCell}</td>
-      <td style="font-size:12px;color:#5f5e5a">${h.note||'—'}</td>
-      <td style="font-size:11px;color:#888780">${h.by}</td>
+      <td style="font-size:12px;color:#5f5e5a">${esc(h.note||'—')}</td>
+      <td style="font-size:11px;color:#888780">${esc(h.by)}</td>
     </tr>`;
   });
   wrap.innerHTML=`<div style="overflow-x:auto"><table><thead><tr>
@@ -9890,6 +10200,8 @@ function projectionReturnFor(a,code){
   return a.fallbackReturnPct;
 }
 function getProjectionBlend(basis){
+  // v3.36.0 — in the Member portal the blend was precomputed by staff into the statement
+  if(portalStatement&&portalStatement.projection){ const pb=portalStatement.projection[basis==='target'?'target':'actual']; if(pb) return pb; }
   const a=getProjectionAssumptions();
   const weights={};let src='';
   if(basis==='target'&&allocationTargets.length){
@@ -9924,7 +10236,7 @@ function initProjectionPanel(){
   const sel=document.getElementById('projection-member-select');if(!sel)return;
   const cur=sel.value;
   const names=[...new Set([...membersRegistry.map(m=>m.name),...deposits.map(d=>d.member)])];
-  sel.innerHTML='<option value="">— Select a member —</option>'+names.map(n=>`<option value="${n}"${n===cur?' selected':''}>${n}</option>`).join('');
+  sel.innerHTML='<option value="">— Select a member —</option>'+names.map(n=>`<option value="${esc(n)}"${n===cur?' selected':''}>${esc(n)}</option>`).join('');
   if(cur) mountProjection('projection-mount',cur);
 }
 function mountProjection(containerId,memberName){
@@ -9935,7 +10247,7 @@ function mountProjection(containerId,memberName){
   const s=getMemberStats(memberName);
   const defContrib=s.avgDeposit?Math.round(s.avgDeposit):0;
   el.innerHTML=`<div class="card">
-    <div class="card-title">Investment projection — ${memberName}</div>
+    <div class="card-title">Investment projection — ${esc(memberName)}</div>
     <div style="font-size:12px;color:#5f5e5a;line-height:1.6;margin-bottom:10px">Starts from your current holding of <strong>${fmtU(s.myNetUnits)}</strong> units (<strong>${fmt(s.currentValue)}</strong> at the current NAV) and projects how it could grow with your contributions.</div>
     <div class="row">
       <div class="f1"><label>Monthly contribution</label><input id="pj-contrib" type="number" min="0" step="1000" value="${defContrib}" oninput="runProjection()"/></div>
@@ -9964,12 +10276,12 @@ function runProjection(){
   const df=(y)=>real?Math.pow(1+a.inflationPct/100,y):1;
   const res=defs.map(([label,rate,color])=>({label,rate,color,...projectScenario(s.currentValue,nav0,rate,monthly,topup,years)}));
   const costStart=s.myAmount+topup;
-  let h=`<div style="font-size:12px;color:#5f5e5a;margin-bottom:8px">Blended fund return: <strong>${blend.gross.toFixed(2)}%</strong> a year${a.feePct?` less ${a.feePct}% fees = <strong>${blend.net.toFixed(2)}%</strong>`:''}, from the ${blend.src}${blend.rows.length?': '+blend.rows.map(r=>`${allocTypeLabel(r.type)} ${(r.weight*100).toFixed(0)}% @ ${r.ret}%`).join(', '):''}. Scenarios use &plusmn;${a.spreadPct}%.${real?` Values deflated by ${a.inflationPct}% inflation.`:''}</div>`;
+  let h=`<div style="font-size:12px;color:#5f5e5a;margin-bottom:8px">Blended fund return: <strong>${blend.gross.toFixed(2)}%</strong> a year${a.feePct?` less ${a.feePct}% fees = <strong>${blend.net.toFixed(2)}%</strong>`:''}, from the ${esc(blend.src)}${blend.rows.length?': '+blend.rows.map(r=>`${esc(allocTypeLabel(r.type))} ${(r.weight*100).toFixed(0)}% @ ${esc(r.ret)}%`).join(', '):''}. Scenarios use &plusmn;${a.spreadPct}%.${real?` Values deflated by ${a.inflationPct}% inflation.`:''}</div>`;
   h+='<div style="overflow-x:auto"><table><thead><tr><th>Scenario</th><th class="num">Return / yr</th><th class="num">Total contributed</th><th class="num">Projected value (yr '+years+')</th><th class="num">Gain</th><th class="num">Units</th><th class="num">NAV / unit</th></tr></thead><tbody>';
   res.forEach(r=>{
     const v=r.value/df(years),cost=costStart+monthly*years*12;
     const gain=v-cost;
-    h+=`<tr><td><strong style="color:${r.color}">${r.label}</strong></td><td class="num">${r.rate.toFixed(2)}%</td><td class="num">${fmt(cost)}</td><td class="num" style="font-weight:600">${fmt(v)}</td><td class="num" style="color:${gain>=0?'#3b6d11':'#a32d2d'}">${gain>=0?'+':''}${fmt(gain)}</td><td class="num">${fmtU(r.units)}</td><td class="num">${getCurrency()}${(r.nav/df(years)).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}</td></tr>`;
+    h+=`<tr><td><strong style="color:${r.color}">${esc(r.label)}</strong></td><td class="num">${r.rate.toFixed(2)}%</td><td class="num">${fmt(cost)}</td><td class="num" style="font-weight:600">${fmt(v)}</td><td class="num" style="color:${gain>=0?'#3b6d11':'#a32d2d'}">${gain>=0?'+':''}${fmt(gain)}</td><td class="num">${fmtU(r.units)}</td><td class="num">${getCurrency()}${(r.nav/df(years)).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}</td></tr>`;
   });
   out.innerHTML=h+'</tbody></table></div>';
   renderProjectionExplanation({name,s,nav0,monthly,topup,years,real,blend,a,res,df,costStart});
@@ -10006,7 +10318,7 @@ function renderProjectionExplanation(c){
 
   h+=H('Where you are today');
   if(s.myNetUnits>0){
-    h+=P(`${name}, you currently hold <strong>${fmtU(s.myNetUnits)} units</strong>. At today's unit price (NAV) of <strong>${fmt(nav0)}</strong>, they are worth <strong>${fmt(s.currentValue)}</strong>. You have paid in <strong>${fmt(s.myAmount)}</strong> so far, so your holding is currently ${s.unrealisedGL>=0?'ahead of':'behind'} what you paid by <strong>${fmt(Math.abs(s.unrealisedGL))}</strong>.`);
+    h+=P(`${esc(name)}, you currently hold <strong>${fmtU(s.myNetUnits)} units</strong>. At today's unit price (NAV) of <strong>${fmt(nav0)}</strong>, they are worth <strong>${fmt(s.currentValue)}</strong>. You have paid in <strong>${fmt(s.myAmount)}</strong> so far, so your holding is currently ${s.unrealisedGL>=0?'ahead of':'behind'} what you paid by <strong>${fmt(Math.abs(s.unrealisedGL))}</strong>.`);
   } else {
     h+=P('You do not hold any units yet, so this projection starts from zero and is built entirely from the contributions you enter above.');
   }
@@ -10040,7 +10352,7 @@ function renderProjectionSettings(){
   const wrap=document.getElementById('pjs-wrap');if(!wrap)return;
   const a=getProjectionAssumptions();
   const types=[{code:'CASH',name:'Cash and Cash Equivalents'},...assetTypeRegistry.map(t=>({code:t.code,name:t.name+' ('+t.code+')'})),{code:'OTH',name:'Other / unclassified'}];
-  const inp=(id,v,lbl)=>`<div class="f1"><label>${lbl}</label><input id="${id}" type="number" step="0.1" value="${v}"/></div>`;
+  const inp=(id,v,lbl)=>`<div class="f1"><label>${esc(lbl)}</label><input id="${id}" type="number" step="0.1" value="${v}"/></div>`;
   wrap.innerHTML='<div class="card-title">Expected annual return by asset class (%)</div><div class="row">'+types.map(t=>inp('pjs-ret-'+t.code,projectionReturnFor(a,t.code),t.name)).join('')+'</div>'
     +'<div class="card-title" style="margin-top:8px">General</div><div class="row">'
     +inp('pjs-fallback',a.fallbackReturnPct,'Fallback return (no allocation data) %')+inp('pjs-fee',a.feePct,'Annual fee drag %')+inp('pjs-spread',a.spreadPct,'Scenario spread (± %)')+inp('pjs-infl',a.inflationPct,'Inflation (for today\'s-money view) %')+'</div>';
@@ -10100,10 +10412,16 @@ setTimeout(()=>{
   // risking a pull silently overwriting fresher local data with an older snapshot.
   // Every boot after that behaves normally (push if there are unsynced local edits,
   // otherwise pull the latest cloud copy).
-  const cutoverDone=localStorage.getItem('lmr_cutover_v330')==='true';
-  const action = (!cutoverDone || localStorage.getItem('lmr_pending_sync')==='true')
-    ? pushToCloud().then(()=>localStorage.setItem('lmr_cutover_v330','true'))
-    : pullFromCloud();
+  // v3.36.0 — the v3.30.0 "first boot pushes local data" branch is retired: the cutover is long done, and
+  // on a wiped/fresh device it could push an empty local copy over the shared fund.
+  // A Member-portal tab just refreshes its own statement.
+  const sessStatement=readSessionStatement();
+  let sessUser=null; try{ sessUser=JSON.parse(sessionStorage.getItem('lmr_session')||'null'); }catch(e){}
+  if(sessStatement&&sessUser&&sessUser.uid){
+    fetchOwnStatement(sessUser.uid).then(st=>{ if(st){ try{sessionStorage.setItem('lmr_statement',JSON.stringify(st));}catch(e){} } }).finally(()=>bootApp());
+    return;
+  }
+  const action = localStorage.getItem('lmr_pending_sync')==='true' ? pushToCloud() : pullFromCloud();
   action.then(()=>bootApp()).catch(()=>bootApp());
 },0);
 </script>

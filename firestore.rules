@@ -3,6 +3,20 @@ rules_version = '2';
 // ═══════════════════════════════════════════════════════════════════════
 // LMR — Firestore Security Rules
 //
+// v3.36.0 (P0 security) — role-checked access:
+//   • funds/{fundId}            read/write only for STAFF (active, non-portal members).
+//                               Member-portal users can no longer read it at all.
+//                               Never accepts a `kycData` field (KYC moved out).
+//                               Only Admins may change customRoles / memberPortal /
+//                               memberRoleRemoved; nobody may change founderUid.
+//   • …/kyc/{doc}               Admin, or a role listed in config/access.kycRoles.
+//   • …/statements/{uid}        the member it belongs to (read), staff (read/write).
+//   • …/config/{doc}            staff read, Admin write.
+//   • …/members/{uid}           staff read all; anyone reads their own. Self-updates
+//                               can't touch role / active / linkedMemberName / uid.
+//   • collection-group members  a signed-in user may query for their own doc
+//                               (where uid == their uid) — the v3.33.0 fund lookup.
+//
 // v3.30.0 cutover status: the app's live login/sync path now reads and
 // writes ONLY funds/{fundId} and funds/{fundId}/members/{uid}. The legacy
 // lmrSync/{hash} tree (and its profiles/{ts} and backups/{ts} subcollections)
@@ -58,6 +72,41 @@ service cloud.firestore {
       return isActiveFundMember(fundId) && fundMemberData(fundId).role == 'Admin';
     }
 
+    // ── v3.36.0 role helpers ─────────────────────────────────────────
+    function fundPath(fundId) {
+      return /databases/$(database)/documents/funds/$(fundId);
+    }
+
+    // The built-in view-only portal role. Once an Admin deletes it
+    // (memberRoleRemoved), a role named 'Member' is an ordinary custom role.
+    function isPortalMember(fundId) {
+      return fundMemberData(fundId).role == 'Member' &&
+        get(fundPath(fundId)).data.get('memberRoleRemoved', false) != true;
+    }
+
+    // Staff = any active member except built-in portal Members: Admin, Manager,
+    // and custom roles. (Finer per-section write limits for custom roles still
+    // need Cloud Functions — security_improvement.md Step 4.)
+    function isFundStaff(fundId) {
+      return isActiveFundMember(fundId) && !isPortalMember(fundId);
+    }
+
+    function accessPath(fundId) {
+      return /databases/$(database)/documents/funds/$(fundId)/config/access;
+    }
+
+    // KYC: Admins, plus roles the Admin granted the KYC permission (mirrored by
+    // the app into funds/{fundId}/config/access.kycRoles, which only Admins write).
+    function canUseKyc(fundId) {
+      return isFundAdmin(fundId) ||
+        (isFundStaff(fundId) && exists(accessPath(fundId)) &&
+         fundMemberData(fundId).role in get(accessPath(fundId)).data.get('kycRoles', []));
+    }
+
+    function changedKeys() {
+      return request.resource.data.diff(resource.data).affectedKeys();
+    }
+
     // True only at the instant a fund is first created — before any member
     // doc exists for it — and only for the uid that created it (founderUid,
     // written once by createFirstAdmin() in the app). Lets that first
@@ -73,14 +122,18 @@ service cloud.firestore {
     match /funds/{fundId} {
       // Read: any active member of this specific fund. Not public, and not
       // "any signed-in user" — must have a members/{uid} doc in THIS fund.
-      allow read: if isActiveFundMember(fundId);
+      // v3.36.0: staff only — portal Members read funds/{fundId}/statements/{uid} instead.
+      allow read: if isFundStaff(fundId);
 
       // Create: the fund doc itself is harmless with no members attached
       // (it grants no access to anything), so any signed-in user may create
       // one — this only ever happens via createFirstAdmin(), which picks a
       // fresh random fundId client-side. What matters is who can
       // subsequently attach themselves as a member (see the members rules).
-      allow create: if isSignedIn();
+      // v3.36.0: the creator must record themselves as founder, and no KYC on the doc.
+      allow create: if isSignedIn() &&
+                       request.resource.data.founderUid == request.auth.uid &&
+                       !('kycData' in request.resource.data);
 
       // Update: any active member can write fund data today. This matches
       // the app's current behavior (Admin and Manager roles can both push
@@ -89,7 +142,16 @@ service cloud.firestore {
       // Accounting access can still write here) — that finer split is a
       // Cloud Functions job (security_improvement.md Step 4), not something
       // Firestore rules alone can express well against this document shape.
-      allow update: if isActiveFundMember(fundId);
+      //
+      // v3.36.0: staff only; the resulting doc may not contain kycData (the
+      // one-time Admin migration that deletes it passes this check, every other
+      // write is refused until it has run); founderUid is immutable; only
+      // Admins may change role definitions or Member-portal settings.
+      allow update: if isFundStaff(fundId) &&
+                       !('kycData' in request.resource.data) &&
+                       !changedKeys().hasAny(['founderUid']) &&
+                       (isFundAdmin(fundId) ||
+                        !changedKeys().hasAny(['customRoles', 'memberPortal', 'memberRoleRemoved']));
 
       allow delete: if isFundAdmin(fundId);
 
@@ -97,7 +159,9 @@ service cloud.firestore {
       match /members/{memberUid} {
         // Read: any active member of the fund can see the full member
         // list — needed for role management screens and member pickers.
-        allow read: if isActiveFundMember(fundId);
+        // v3.36.0: staff see the full list; a portal Member sees only their own doc.
+        allow read: if isFundStaff(fundId) ||
+                       (isSignedIn() && request.auth.uid == memberUid);
 
         // Create: either
         //   (a) an existing Admin adding/mirroring someone else's profile, or
@@ -112,14 +176,42 @@ service cloud.firestore {
         // their own role (no self-promotion) or their own active flag (no
         // self-reactivation after an Admin deactivates them). An Admin may
         // update anything, including another member's role/active status.
+        // v3.36.0: also locks linkedMemberName (which statement a Member gets)
+        // and uid against self-edits.
         allow update: if isFundAdmin(fundId) ||
                          (request.auth.uid == memberUid &&
-                          request.resource.data.role == resource.data.role &&
-                          request.resource.data.active == resource.data.active);
+                          !changedKeys().hasAny(['role', 'active', 'linkedMemberName', 'uid']));
 
         // Delete: Admin only.
         allow delete: if isFundAdmin(fundId);
       }
+
+      // ── v3.36.0 funds/{fundId}/kyc/{docId} — next-of-kin & bank details ──
+      match /kyc/{docId} {
+        allow read, write: if canUseKyc(fundId);
+      }
+
+      // ── v3.36.0 funds/{fundId}/statements/{memberUid} — Member portal data ──
+      match /statements/{memberUid} {
+        allow read: if isFundStaff(fundId) ||
+                       (isActiveFundMember(fundId) && request.auth.uid == memberUid);
+        allow write: if isFundStaff(fundId);
+      }
+
+      // ── v3.36.0 funds/{fundId}/config/{docId} — access config (kycRoles) ──
+      match /config/{docId} {
+        allow read: if isFundStaff(fundId);
+        allow write: if isFundAdmin(fundId);
+      }
+    }
+
+    // ── v3.33.0 fund lookup (collection-group query on members) ────────
+    // attemptLogin() runs collectionGroup('members').where('uid','==',myUid)
+    // to find which fund a user belongs to. Only the caller's own member docs
+    // can match. Needs the members.uid collection-group index (see
+    // firestore.indexes.json).
+    match /{path=**}/members/{memberUid} {
+      allow read: if isSignedIn() && resource.data.uid == request.auth.uid;
     }
 
     // ── lmrSync/{hash} — LOCKED DOWN, confirmed unused post-cutover ──
