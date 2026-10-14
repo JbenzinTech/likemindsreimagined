@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Like Minds Reimagined — v3.36.1</title>
+<title>Like Minds Reimagined — v3.36.2</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
@@ -1877,7 +1877,7 @@ let fbAuth=null, fbDb=null, syncDebounceTimer=null, suppressAutoPush=false, appB
 // which check the caller's real Firebase Auth uid against
 // funds/{fundId}/members/{uid} — not whether they know this string.
 let fundId=null;
-/* v3.36.1 — P0-6. App Check (reCAPTCHA v3) attests that requests come from this app on the
+/* v3.36.1 — P0-6 (v3.36.2: reCAPTCHA Enterprise key, so ReCaptchaEnterpriseProvider). App Check attests that requests come from this app on the
    registered domains (like-minds-reimagined.web.app / .firebaseapp.com). ACTIVATED ONLY: tokens are
    sent and show up in the console's App Check metrics, but nothing is rejected until Enforce is
    switched on for Firestore/Auth in the Firebase console. The site key is public by design.
@@ -1889,7 +1889,7 @@ function activateAppCheck(app){
   try{
     if(!firebase.appCheck){ console.warn('App Check SDK not loaded — continuing without it.'); return; }
     if(/^(localhost|127\.0\.0\.1)$/.test(location.hostname)) self.FIREBASE_APPCHECK_DEBUG_TOKEN=true;
-    app.appCheck().activate(new firebase.appCheck.ReCaptchaV3Provider(LMR_RECAPTCHA_SITE_KEY),true);
+    app.appCheck().activate(new firebase.appCheck.ReCaptchaEnterpriseProvider(LMR_RECAPTCHA_SITE_KEY),true);
   }catch(e){ console.warn('App Check activation failed:',e.message); }
 }
 try{
