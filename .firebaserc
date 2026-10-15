@@ -1,5 +1,7 @@
 {
   "projects": {
-    "default": "like-minds-reimagined"
+    "default": "like-minds-reimagined",
+    "prod": "like-minds-reimagined",
+    "staging": "like-minds-reimagined-stg"
   }
 }

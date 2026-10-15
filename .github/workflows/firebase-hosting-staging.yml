@@ -1,0 +1,24 @@
+# LMR v3.37.0 — P0-7. Deploys the `staging` branch to the STAGING Firebase project.
+# Save as: lmr-hosting/.github/workflows/firebase-hosting-staging.yml
+# The existing production workflow (push to `main`) is not changed.
+# Secret FIREBASE_SERVICE_ACCOUNT_LIKE_MINDS_REIMAGINED_STG is created by running
+# `firebase init hosting:github --project like-minds-reimagined-stg` once (see the setup checklist).
+name: Deploy to Firebase Hosting (STAGING)
+on:
+  push:
+    branches:
+      - staging
+concurrency:
+  group: staging-deploy
+  cancel-in-progress: true
+jobs:
+  deploy_staging:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_LIKE_MINDS_REIMAGINED_STG }}
+          channelId: live
+          projectId: like-minds-reimagined-stg

@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Like Minds Reimagined — v3.36.2</title>
+<title>Like Minds Reimagined — v3.37.0</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
@@ -1861,14 +1861,41 @@ let allocationHistory=[]; // [{id, date, action:'set'|'updated'|'removed', asset
    pullFromCloud() knows whether to just write localStorage (pre-boot) or
    also refresh in-memory state + the visible UI (mid-session pull).
 ══════════════════════════════════════════ */
-const LMR_FIREBASE_CONFIG={
-  apiKey:"AIzaSyAnei9wfmfCs9ESItrxgeNzBWmFnvusqEo",
-  authDomain:"like-minds-reimagined.firebaseapp.com",
-  projectId:"like-minds-reimagined",
-  storageBucket:"like-minds-reimagined.firebasestorage.app",
-  messagingSenderId:"911074593922",
-  appId:"1:911074593922:web:03e8f1a631d294f102789b"
+/* v3.37.0 — P0-7 STAGING ENVIRONMENT. One file serves production and staging; the Firebase project
+   is chosen from the web address the page is opened from. ONLY the exact production hostnames below
+   load production — localhost, file://, the staging hosts, Firebase preview channels and ANY other
+   address load staging, so a copied or mis-hosted file can never read or write real member data.
+   Promote a tested build by merging the `staging` branch into `main`; the file is not edited.
+   Firebase web config values are public identifiers, not secrets. */
+const LMR_PROD_HOSTS=['like-minds-reimagined.web.app','like-minds-reimagined.firebaseapp.com'];
+const LMR_ENV=LMR_PROD_HOSTS.includes(location.hostname)?'prod':'staging';
+const LMR_FIREBASE_CONFIGS={
+  prod:{
+    apiKey:"AIzaSyAnei9wfmfCs9ESItrxgeNzBWmFnvusqEo",
+    authDomain:"like-minds-reimagined.firebaseapp.com",
+    projectId:"like-minds-reimagined",
+    storageBucket:"like-minds-reimagined.firebasestorage.app",
+    messagingSenderId:"911074593922",
+    appId:"1:911074593922:web:03e8f1a631d294f102789b"
+  },
+  staging:{
+    apiKey:"AIzaSyBbNMVsRKq6_q2Bv_9ITQ04nAXYwTSwXvI",
+    authDomain:"like-minds-reimagined-stg.firebaseapp.com",
+    projectId:"like-minds-reimagined-stg",
+    storageBucket:"like-minds-reimagined-stg.firebasestorage.app",
+    messagingSenderId:"450911020082",
+    appId:"1:450911020082:web:a669470e8dbc2215c7c82b"
+  }
 };
+const LMR_FIREBASE_CONFIG=LMR_FIREBASE_CONFIGS[LMR_ENV];
+if(LMR_ENV!=='prod'){
+  document.title='[STAGING] '+document.title;
+  const envBanner=document.createElement('div');
+  envBanner.id='lmr-env-banner';
+  envBanner.textContent='STAGING \u2014 test data only \u00b7 '+(location.hostname||'local file');
+  envBanner.style.cssText='position:fixed;top:0;left:50%;transform:translateX(-50%);z-index:1000;background:#faeeda;color:#633806;border:1px solid #ef9f27;border-top:none;border-radius:0 0 8px 8px;padding:3px 12px;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;pointer-events:none;white-space:nowrap';
+  document.body.appendChild(envBanner);
+}
 let fbAuth=null, fbDb=null, syncDebounceTimer=null, suppressAutoPush=false, appBooted=false;
 // v3.30.0 — Security plan Step 3 cutover: funds/{fundId} is now the ONLY cloud path
 // the app reads/writes. lmrSync/{hash} is left in place, untouched, but unused —
@@ -1883,7 +1910,8 @@ let fundId=null;
    switched on for Firestore/Auth in the Firebase console. The site key is public by design.
    On localhost a debug token is requested instead — copy it from the console log into
    App Check → Manage debug tokens if local testing is needed once enforcement is on. */
-const LMR_RECAPTCHA_SITE_KEY='6LejRe8tAAAAAO8Nho0Rvgm9NYUXuGAkIejHAzo4';
+const LMR_RECAPTCHA_SITE_KEYS={prod:'6LejRe8tAAAAAO8Nho0Rvgm9NYUXuGAkIejHAzo4',staging:'6Ld3mfAtAAAAAF9XP2hVyEF6PbR8WMn1wcLXmHN2'}; // v3.37.0 — one Enterprise key per Firebase project
+const LMR_RECAPTCHA_SITE_KEY=LMR_RECAPTCHA_SITE_KEYS[LMR_ENV];
 const MIN_PASSWORD_LENGTH=10; // v3.36.1 — matches the Firebase Auth password policy set in the console
 function activateAppCheck(app){
   try{
@@ -2069,7 +2097,7 @@ function fundMembersCollection(){
 function renderFundIdDisplay(){
   const el=document.getElementById('lmr-fund-id-display');
   if(!el) return;
-  el.textContent=fundId?('Connected fund (reference only): '+fundId):'Not connected to a fund yet.';
+  el.textContent=(LMR_ENV==='prod'?'':'[STAGING \u2014 project '+LMR_FIREBASE_CONFIG.projectId+'] ')+(fundId?('Connected fund (reference only): '+fundId):'Not connected to a fund yet.');
 }
 
 /* ══════════════════════════════════════════
@@ -4121,11 +4149,11 @@ function clearAllData(){
 function exportJSON(){
   // v3.36.0 — backups no longer contain KYC (next-of-kin and bank details). KYC lives only in
   // funds/{fundId}/kyc/records, readable by Admin and roles holding the KYC permission.
-  const data={deposits,withdrawals,portfolioItems,purchases,brokerRegistry,assetTypeRegistry,navValuations,profitRounds,membersRegistry,transfers,sales,incomeRecords,journalEntries,corporateActions,customAccounts,coaOverrides,fundLaunchNav,allocationTargets,allocationHistory,stockHoldings,stockTxns,stockDividends,projectionAssumptions,settings:{fundName:document.getElementById('fund-name').value,currency:getCurrency(),nav:document.getElementById('init-nav').value,startDate:document.getElementById('fund-start').value},exportedAt:new Date().toISOString()};
+  const data={deposits,withdrawals,portfolioItems,purchases,brokerRegistry,assetTypeRegistry,navValuations,profitRounds,membersRegistry,transfers,sales,incomeRecords,journalEntries,corporateActions,customAccounts,coaOverrides,fundLaunchNav,allocationTargets,allocationHistory,stockHoldings,stockTxns,stockDividends,projectionAssumptions,settings:{fundName:document.getElementById('fund-name').value,currency:getCurrency(),nav:document.getElementById('init-nav').value,startDate:document.getElementById('fund-start').value},exportedAt:new Date().toISOString(),lmrEnv:LMR_ENV};
   const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);
   const fn=(document.getElementById('fund-name').value||'investment_club').replace(/[^a-z0-9]/gi,'_').toLowerCase();
-  a.download=fn+'_backup_'+today+'.json';a.click();setStatus('Exported — '+a.download);
+  a.download=(LMR_ENV==='prod'?'':'STAGING_')+fn+'_backup_'+today+'.json';a.click();setStatus('Exported — '+a.download);
 }
 function toggleImport(){
   const el=document.getElementById('import-area');
@@ -4140,6 +4168,8 @@ function importJSON(){
     try{
       const d=JSON.parse(e.target.result);
       if(!d.deposits)throw new Error('Invalid backup file');
+      // v3.37.0 — guard production against importing staging/anonymised test data
+      if(LMR_ENV==='prod'&&(d.lmrEnv==='staging'||d.anonymisedAt)&&!confirm('WARNING: this backup comes from the STAGING environment (anonymised test data).\n\nImporting it into PRODUCTION would replace real member data with test data. Press Cancel unless you are absolutely sure.'))return;
       if(!confirm('Replace all current data with this backup?'))return;
 
       // Restore every field exportJSON() writes — previously this only restored
