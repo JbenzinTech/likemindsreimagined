@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Like Minds Reimagined — v3.37.0</title>
+<title>Like Minds Reimagined — v3.37.1</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
@@ -901,7 +901,7 @@ tr:last-child td{border-bottom:none}
         <div class="card-title">Cumulative investment over time</div>
         <div class="chart-wrap"><canvas id="chart-cumulative"></canvas></div>
       </div>
-      <div class="card ov-c-teal ov-tip-card" data-tip="How the fund is split between members, based on each member's net amount invested. Hover a slice to see the exact figure.">
+      <div class="card ov-c-teal ov-tip-card" data-tip="How the fund is split between members (labelled by Member ID), based on each member's net amount invested. Hover a slice to see the exact figure.">
         <div class="card-title">Member share breakdown</div>
         <div class="chart-wrap"><canvas id="chart-share"></canvas></div>
       </div>
@@ -1127,14 +1127,14 @@ tr:last-child td{border-bottom:none}
       <div class="f1"><label>Date</label><input id="sale-date" type="date" onchange="onSaleAssetChange(document.getElementById('sale-asset-id').value)"/></div>
       <div class="f1">
         <label>Asset ID</label>
-        <select id="sale-asset-id" onchange="onSaleAssetChange(this.value);applyDefaultSettleAccount(this.value,'sale-settle')">
+        <select id="sale-asset-id" onchange="saleCostManual=false;onSaleAssetChange(this.value);applyDefaultSettleAccount(this.value,'sale-settle')">
           <option value="">— Select asset —</option>
         </select>
       </div>
       <div class="f1"><label>Asset type <span style="color:#888780;font-size:11px">(auto)</span></label><input id="sale-asset-type" type="text" readonly style="background:#f4f4f2;color:#0c447c;font-weight:600"/></div>
       <div class="f1">
         <label>Redemption type</label>
-        <select id="sale-redemption-type" onchange="previewSaleGL()">
+        <select id="sale-redemption-type" onchange="refreshSaleCostSuggestion();validateSaleCostBasis();previewSaleGL()">
           <option value="partial">Partial redemption</option>
           <option value="full">Full redemption</option>
         </select>
@@ -1145,17 +1145,18 @@ tr:last-child td{border-bottom:none}
         <label>Sale proceeds</label>
         <input id="sale-proceeds" type="text" placeholder="0.00"
           oninput="stripNonNumeric(this)"
-          onblur="applyFormatting(this,'sale-proceeds-raw');previewSaleGL()"
+          onblur="applyFormatting(this,'sale-proceeds-raw');refreshSaleCostSuggestion();validateSaleCostBasis();previewSaleGL()"
           onfocus="stripFormatting(this,'sale-proceeds-raw')"/>
         <input type="hidden" id="sale-proceeds-raw"/>
       </div>
       <div class="f1">
-        <label>Cost basis <span style="color:#888780;font-size:11px">(auto-filled, average-cost — editable if you need to adjust)</span></label>
+        <label>Cost basis <span style="color:#888780;font-size:11px">(auto-filled — proportional for a partial redemption, whole remaining cost for a full one; editable)</span></label>
         <input id="sale-cost" type="text" placeholder="0.00"
-          oninput="stripNonNumeric(this)"
-          onblur="applyFormatting(this,'sale-cost-raw');validateSaleCostBasis();previewSaleGL()"
+          oninput="stripNonNumeric(this);saleCostManual=true"
+          onblur="applyFormatting(this,'sale-cost-raw');refreshSaleCostSuggestion();validateSaleCostBasis();previewSaleGL()"
           onfocus="stripFormatting(this,'sale-cost-raw')"/>
         <input type="hidden" id="sale-cost-raw"/>
+        <div id="sale-cost-suggestion" style="color:#5f5e5a;font-size:11px;margin-top:4px;line-height:1.5"></div>
         <div id="sale-cost-warning" style="display:none;color:#a32d2d;font-size:11px;margin-top:4px;line-height:1.5"></div>
       </div>
       <div class="f1"><label>Note</label><input id="sale-note" type="text" placeholder="e.g. Full exit"/></div>
@@ -1165,7 +1166,7 @@ tr:last-child td{border-bottom:none}
         <button id="sale-update-btn" class="btn-primary" onclick="saveSaleEdit()" style="display:none;background:#1d6f42;border-color:#1d6f42">&#10003; Update</button>
       </div>
     </div>
-    <div class="hint">Mark <strong>Full redemption</strong> when this sale exits the entire remaining position in this investment; use <strong>Partial redemption</strong> when some of the holding remains. This is a record-keeping tag only — it does not change how cost basis or gain/loss are calculated.</div>
+    <div class="hint">Mark <strong>Full redemption</strong> when this sale exits the entire remaining position in this investment; use <strong>Partial redemption</strong> when some of the holding remains. The type sets the suggested cost basis: a <strong>Partial</strong> redemption takes the share of the remaining cost that matches the share of the holding's value redeemed (remaining cost × proceeds ÷ holding value at the last valuation on or before the sale date); a <strong>Full</strong> redemption takes the whole remaining cost.</div>
     <div class="hint" id="sale-gl-preview"></div>
   </div>
   <div class="card">
@@ -6222,7 +6223,8 @@ function renderChartShare(){
   const ms=getMemberSummary();if(!ms.length)return;
   const colors=['#378add','#7f77dd','#1d9e75','#ef9f27','#d85a30','#d4537e','#639922','#e24b4a'];
   const ctx=document.getElementById('chart-share').getContext('2d');
-  chartShare=new Chart(ctx,{type:'doughnut',data:{labels:ms.map(m=>m.member),datasets:[{data:ms.map(m=>parseFloat(m.totalAmount.toFixed(2))),backgroundColor:colors.slice(0,ms.length),borderWidth:2,borderColor:'#fff'}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'right',labels:{font:{size:11},boxWidth:12,padding:8}}}}});
+  const shareLabel=name=>{const r=membersRegistry.find(x=>x.name===name);return r&&r.memberId?r.memberId:name;}; // v3.37.1 — Member IDs, not names (falls back to name if no ID)
+  chartShare=new Chart(ctx,{type:'doughnut',data:{labels:ms.map(m=>shareLabel(m.member)),datasets:[{data:ms.map(m=>parseFloat(m.totalAmount.toFixed(2))),backgroundColor:colors.slice(0,ms.length),borderWidth:2,borderColor:'#fff'}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'right',labels:{font:{size:11},boxWidth:12,padding:8}}}}});
 }
 function renderChartNAV(){
   chartNAV=destroyChart(chartNAV);
@@ -9461,21 +9463,93 @@ function computeRemainingCostBasis(assetId,asOfDate,excludeSaleId){
   const soldCost=priorSales.reduce((s,x)=>s+(x.costBasis||0),0);
   return Math.max(totalPurchased-soldCost,0);
 }
-function onSaleAssetChange(assetId){
-  const item=portfolioItems.find(p=>p.assetId===assetId);
-  document.getElementById('sale-asset-type').value=item?getAssetLabelFull(item.assetType):'';
-  const saleDate=document.getElementById('sale-date').value||today;
-  const editId=parseInt(document.getElementById('sale-edit-id').value)||null;
-  const totalCost=computeRemainingCostBasis(assetId,saleDate,editId);
+/* ══════════════════════════════════════════
+   v3.37.1 — PROPORTIONAL COST BASIS FOR PARTIAL REDEMPTIONS
+══════════════════════════════════════════ */
+/* Mutual funds are tracked by amount, not units, so the remaining cost pool alone can't say how
+   much cost a partial redemption takes out. Up to v3.37.0 the field pre-filled with the WHOLE
+   remaining pool, so a partial redemption booked a large false realised loss (and an offsetting
+   unrealised gain). Now: Partial → remaining cost × proceeds ÷ holding value just before the sale;
+   Full (or proceeds ≥ holding value) → whole remaining cost. Holding value = the asset's value in
+   the last valuation on or before the sale date, plus later purchases and minus later prior-sale
+   proceeds of that asset up to the sale; with no valuation, remaining cost stands in (so the
+   suggested cost equals the proceeds — zero gain/loss). The field stays editable; once the user
+   types in it (saleCostManual) the suggestion is shown in the hint with a "Use" link instead of
+   overwriting. */
+var saleCostManual=false,saleCostSuggestion=null;
+function computeHoldingValueBeforeSale(assetId,saleDate,excludeSaleId){
+  const val=navValuations.filter(v=>v.date<=saleDate&&v.assetValues&&v.assetValues[assetId]!=null)
+    .sort((a,b)=>b.date.localeCompare(a.date))[0];
+  if(!val) return null;
+  let value=Number(val.assetValues[assetId])||0;
+  const bought=purchases.filter(p=>p.assetId===assetId&&p.date>val.date&&p.date<=saleDate).reduce((s,p)=>s+p.amount,0);
+  const sold=sales.filter(x=>{
+    if(x.assetId!==assetId||x.date<=val.date) return false;
+    if(excludeSaleId&&x.id===excludeSaleId) return false;
+    if(x.date<saleDate) return true;
+    if(x.date===saleDate) return excludeSaleId?x.id<excludeSaleId:true;
+    return false;
+  }).reduce((s,x)=>s+(x.proceeds||0),0);
+  value+=bought-sold;
+  return {value:Math.max(value,0),date:val.date,adjusted:!!(bought||sold)};
+}
+function computeSuggestedSaleCost(assetId,saleDate,proceeds,redemptionType,excludeSaleId){
+  const remaining=computeRemainingCostBasis(assetId,saleDate,excludeSaleId);
+  if(!assetId||!remaining) return {cost:remaining||0,remaining:remaining||0,basis:'none'};
+  if(redemptionType==='full') return {cost:remaining,remaining,basis:'full'};
+  if(!proceeds||proceeds<=0) return {cost:null,remaining,basis:'needProceeds'};
+  const hv=computeHoldingValueBeforeSale(assetId,saleDate,excludeSaleId);
+  const hasVal=!!(hv&&hv.value>0);
+  const holdingValue=hasVal?hv.value:remaining;
+  if(proceeds>=holdingValue) return {cost:remaining,remaining,basis:'exceeds',holdingValue};
+  const cost=Math.round(remaining*proceeds/holdingValue*100)/100;
+  return {cost,remaining,proceeds,holdingValue,basis:hasVal?'valuation':'noValuation',valDate:hasVal?hv.date:null,adjusted:hasVal&&hv.adjusted};
+}
+function setSaleCostField(v){
   const costEl=document.getElementById('sale-cost');
-  document.getElementById('sale-cost-raw').value=totalCost||'';
-  if(totalCost){
-    costEl.value=totalCost.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+  document.getElementById('sale-cost-raw').value=v||'';
+  if(v){
+    costEl.value=Number(v).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
     costEl.classList.add('input-formatted');
   } else {
     costEl.value='';
     costEl.classList.remove('input-formatted');
   }
+}
+function refreshSaleCostSuggestion(){
+  const hintEl=document.getElementById('sale-cost-suggestion');
+  const assetId=document.getElementById('sale-asset-id').value;
+  if(!assetId){saleCostSuggestion=null;if(hintEl)hintEl.innerHTML='';return;}
+  const date=document.getElementById('sale-date').value||today;
+  const editId=parseInt(document.getElementById('sale-edit-id').value)||null;
+  const proceeds=parseFloat(document.getElementById('sale-proceeds-raw').value)||0;
+  const type=document.getElementById('sale-redemption-type')?.value||'partial';
+  const sug=computeSuggestedSaleCost(assetId,date,proceeds,type,editId);
+  saleCostSuggestion=sug;
+  if(!saleCostManual) setSaleCostField(sug.cost);
+  if(!hintEl) return;
+  let h='';
+  if(sug.basis==='none') h='No cost remaining for this asset as of '+esc(date)+'.';
+  else if(sug.basis==='full') h='Full redemption — whole remaining cost '+fmt(sug.remaining)+'.';
+  else if(sug.basis==='needProceeds') h='Remaining cost '+fmt(sug.remaining)+' — enter the sale proceeds to work out the cost of this partial redemption.';
+  else if(sug.basis==='exceeds') h='Proceeds are at or above the holding\'s value ('+fmt(sug.holdingValue)+') — whole remaining cost '+fmt(sug.remaining)+' used. Consider marking it <strong>Full</strong>.';
+  else if(sug.basis==='valuation') h='Suggested: '+fmt(sug.remaining)+' remaining cost × '+fmt(sug.proceeds)+' proceeds ÷ '+fmt(sug.holdingValue)+' holding value ('+esc(sug.valDate)+' valuation'+(sug.adjusted?', adjusted for later purchases/redemptions':'')+') = <strong>'+fmt(sug.cost)+'</strong>.';
+  else h='No valuation of this asset on or before '+esc(date)+' — its remaining cost is used as the holding value, so the suggested cost equals the proceeds ('+fmt(sug.cost)+').';
+  const entered=parseFloat(document.getElementById('sale-cost-raw').value)||0;
+  if(saleCostManual&&sug.cost!=null&&Math.abs(entered-sug.cost)>0.005)
+    h+=' <a href="#" onclick="useSuggestedSaleCost();return false" style="color:#0c447c;font-weight:600">Use '+fmt(sug.cost)+'</a>';
+  hintEl.innerHTML=h;
+}
+function useSuggestedSaleCost(){
+  if(!saleCostSuggestion||saleCostSuggestion.cost==null) return;
+  saleCostManual=false;
+  setSaleCostField(saleCostSuggestion.cost);
+  refreshSaleCostSuggestion();validateSaleCostBasis();previewSaleGL();
+}
+function onSaleAssetChange(assetId){
+  const item=portfolioItems.find(p=>p.assetId===assetId);
+  document.getElementById('sale-asset-type').value=item?getAssetLabelFull(item.assetType):'';
+  refreshSaleCostSuggestion();
   validateSaleCostBasis();
   previewSaleGL();
 }
@@ -9524,6 +9598,8 @@ function clearSaleForm(){
   document.getElementById('sale-note').value='';
   if(document.getElementById('sale-settle')) document.getElementById('sale-settle').value='1000';
   const gl=document.getElementById('sale-gl-preview');if(gl)gl.textContent='';
+  saleCostManual=false;saleCostSuggestion=null;
+  const sh=document.getElementById('sale-cost-suggestion');if(sh)sh.innerHTML='';
 }
 function setSaleFormMode(editing){
   document.getElementById('sale-form-title').textContent=editing?'Edit sale':'Record a sale';
@@ -9590,6 +9666,8 @@ function editSale(id){
   if(document.getElementById('sale-redemption-type')) document.getElementById('sale-redemption-type').value=s.redemptionType||'partial';
   document.getElementById('sale-note').value=s.note||'';
   if(document.getElementById('sale-settle')) document.getElementById('sale-settle').value=s.settleAccount||'1000';
+  saleCostManual=true; // keep the recorded cost basis; the hint offers the v3.37.1 suggestion
+  refreshSaleCostSuggestion();
   setSaleFormMode(true);previewSaleGL();
   document.getElementById('panel-port-sales').querySelector('.card').scrollIntoView({behavior:'smooth',block:'nearest'});
 }
