@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Like Minds Reimagined — v3.37.1</title>
+<title>Like Minds Reimagined — v3.38.0</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
@@ -282,8 +282,18 @@ tr:last-child td{border-bottom:none}
     </div>
   </div>
   <div style="max-width:900px;margin:0 auto;padding:16px;width:100%">
-    <div id="member-portal-content"></div>
-    <div id="portal-projection-mount"></div>
+    <style>
+      /* v3.38.0 — fund pages inside the Member portal are strictly read-only */
+      .portal-ro .btn-danger,.portal-ro .btn-lock,.portal-ro button[onclick^="edit"],.portal-ro button[onclick^="remove"]{display:none!important}
+      .portal-ro tr[onclick]{pointer-events:none;cursor:default!important}
+      #portal-nav{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
+    </style>
+    <div id="portal-nav" style="display:none"></div>
+    <div id="portal-own-wrap">
+      <div id="member-portal-content"></div>
+      <div id="portal-projection-mount"></div>
+    </div>
+    <div id="portal-fund-pages" class="portal-ro" style="display:none"></div>
   </div>
 </div>
 
@@ -623,8 +633,12 @@ tr:last-child td{border-bottom:none}
       <input type="hidden" id="role-edit-id"/>
       <div style="font-size:12px;color:#5f5e5a;line-height:1.6;margin-bottom:12px">
         Build a custom role with exactly the access it needs. Tick each section a user with this role should be able to see and use.
-        The built-in <strong>Admin</strong> and <strong>Manager</strong> roles cannot be edited. <strong>Member</strong> is a separate view-only
-        portal for a single member's own statement and isn't part of this permission grid — use the Member portal access card below to choose what Members see, or delete it from the Roles table and create your own "Member" role here with exactly the access you want.
+        The built-in <strong>Admin</strong> and <strong>Manager</strong> roles cannot be edited.<br>
+        <strong>How access is enforced:</strong> every role built here is a <em>staff</em> role. In the database, staff can read and save fund data;
+        the ticks below decide which screens they see and use. Two things are enforced in the database itself: <strong>KYC</strong> (only Admins and roles with Members — KYC ticked)
+        and <strong>roles / Member portal access</strong> (only Admins can change them).<br>
+        <strong>Member</strong> is different: a view-only portal that can read only that member's own statement record — never other members' details or KYC. Fund pages switched on in the Member portal access card are a read-only copy with members shown by ID.
+        It isn't part of this grid; use the Member portal access card below to choose what Members see, or delete it from the Roles table and create your own "Member" role here (which then becomes a staff role).
       </div>
       <div class="row">
         <div class="f15"><label>Role name</label><input id="role-name" type="text" placeholder="e.g. Accountant"/></div>
@@ -653,7 +667,8 @@ tr:last-child td{border-bottom:none}
       <div style="font-size:12px;color:#5f5e5a;line-height:1.6;margin-bottom:10px">
         <strong>Admin</strong> — full control, including Settings, Chart of Accounts, and user management.<br>
         <strong>Manager</strong> — day-to-day operations (deposits, withdrawals, portfolio, valuation, accounting). No access to Settings or KYC.<br>
-        <strong>Member</strong> — view-only access to their own account statement. Cannot see other members or any fund-wide data.
+        <strong>Member</strong> — view-only access to their own account statement, plus any read-only fund pages switched on in Settings → Roles → Member portal access (other members shown only by ID). Never sees KYC.<br>
+        <strong>Custom roles</strong> — the sections ticked in Settings → Users &amp; Roles → Roles.
       </div>
       <div style="display:none" id="user-mode-toggle">
         <button type="button" id="user-mode-btn-username" onclick="setUserFormAuthMode('email')" style="flex:1;padding:6px;font-size:12px;background:#1a1a18;color:#fff;border-color:#1a1a18">Username</button>
@@ -2192,6 +2207,7 @@ async function maybeMigrateLegacyKyc(){
 /* The minimal data the Member portal needs to draw one member's statement, projection and PDF. */
 function buildMemberStatement(profile){
   const name=profile.linkedMemberName;
+  const acc=getPortalAccessFor(profile.uid); // v3.38.0 — effective access for this member only
   const pick=(o,keys)=>{const r={};keys.forEach(k=>{if(o[k]!==undefined)r[k]=o[k];});return r;};
   const reg=membersRegistry.find(m=>m.name===name);
   return {
@@ -2207,10 +2223,52 @@ function buildMemberStatement(profile){
     settings:{fundName:document.getElementById('fund-name').value,currency:getCurrency(),
       nav:document.getElementById('init-nav').value,startDate:document.getElementById('fund-start').value},
     member:reg?pick(reg,['id','name','email','memberId','dateJoined']):{name},
-    memberPortal:memberPortalSettings||null,memberRoleRemoved:memberRoleRemoved===true,
+    memberPortal:acc,memberRoleRemoved:memberRoleRemoved===true, // v3.38.0 — this member's effective access (no other members' grants)
+    ...(portalFundKeys(acc).length?{fundView:buildPortalFundView()}:{}), // v3.38.0 — only when a fund page is granted
     projection:JSON.parse(JSON.stringify({actual:getProjectionBlend('actual'),target:getProjectionBlend('target')})),
     assetTypes:assetTypeRegistry.map(t=>({code:t.code,name:t.name}))
   };
+}
+/* ══════════════════════════════════════════
+   v3.38.0 — DE-IDENTIFIED FUND VIEW FOR THE MEMBER PORTAL
+   The read-only fund pages a member is granted are drawn from this copy, published inside that
+   member's own statements/{uid} doc (so no Firestore rules change, and members without a grant
+   never receive it). Member names become Member IDs; notes, emails and journal descriptions are
+   dropped; KYC, users, roles and allocation history are never included.
+══════════════════════════════════════════ */
+function buildPortalFundView(){
+  const idOf={};let n=0;
+  membersRegistry.forEach(m=>{idOf[m.name]=m.memberId||('Member '+(++n));});
+  const pid=nm=>nm==null?null:(idOf[nm]||'(member)');
+  const DROP=new Set(['note','notes','email','by','memo','locked']);
+  const clean=(arr,fix)=>(arr||[]).map(r=>{const o={};Object.keys(r).forEach(k=>{if(!DROP.has(k)&&r[k]!==undefined)o[k]=r[k];});if(fix)fix(o);return o;});
+  return {v:1,
+    deposits:clean(deposits,o=>{o.member=pid(o.member);}),
+    withdrawals:clean(withdrawals,o=>{o.member=pid(o.member);}),
+    transfers:clean(transfers,o=>{if('fromMember' in o)o.fromMember=pid(o.fromMember);if('toMember' in o)o.toMember=pid(o.toMember);}),
+    navValuations:clean(navValuations),portfolioItems:clean(portfolioItems),purchases:clean(purchases),
+    sales:clean(sales),incomeRecords:clean(incomeRecords),
+    journalEntries:journalEntries.map(e=>({id:e.id,date:e.date,sourceType:e.sourceType||null,sourceId:e.sourceId!=null?e.sourceId:null,
+      auto:!!e.auto,stockTicker:e.stockTicker||null,description:'',
+      lines:(e.lines||[]).map(l=>({account:l.account,debit:l.debit||0,credit:l.credit||0}))})),
+    customAccounts:clean(customAccounts),coaOverrides:Object.fromEntries(Object.entries(coaOverrides||{}).map(([k,v])=>[k,clean([v||{}])[0]])),
+    allocationTargets:clean(allocationTargets),stockHoldings:clean(stockHoldings),stockTxns:clean(stockTxns),
+    stockDividends:clean(stockDividends),assetTypeRegistry:clean(assetTypeRegistry),brokerRegistry:clean(brokerRegistry),
+    membersRegistry:membersRegistry.map(m=>({id:m.id,name:idOf[m.name],memberId:idOf[m.name],active:m.active!==false,dateJoined:m.dateJoined||null})),
+    fundLaunchNav:fundLaunchNav!=null?fundLaunchNav:null
+  };
+}
+/* Member portal only: load the fund view into the in-memory globals so the existing renderers draw it.
+   Never saved (save() returns early in the portal) and never written to localStorage. */
+function applyFundViewToGlobals(fv){
+  const a=k=>Array.isArray(fv[k])?JSON.parse(JSON.stringify(fv[k])):[];
+  deposits=a('deposits');withdrawals=a('withdrawals');transfers=a('transfers');navValuations=a('navValuations');
+  portfolioItems=a('portfolioItems');purchases=a('purchases');sales=a('sales');incomeRecords=a('incomeRecords');
+  journalEntries=a('journalEntries');customAccounts=a('customAccounts');coaOverrides=fv.coaOverrides?JSON.parse(JSON.stringify(fv.coaOverrides)):{};
+  allocationTargets=a('allocationTargets');allocationHistory=[];stockHoldings=a('stockHoldings');stockTxns=a('stockTxns');
+  stockDividends=a('stockDividends');assetTypeRegistry=a('assetTypeRegistry');brokerRegistry=a('brokerRegistry');
+  membersRegistry=a('membersRegistry');corporateActions=[];profitRounds=[];kycData={};
+  if(fv.fundLaunchNav!=null) fundLaunchNav=fv.fundLaunchNav;
 }
 /* Called after every successful staff push (and once after an Admin/Manager logs in). Writes only the
    statements and access config that actually changed since the last publish in this session. */
@@ -2466,50 +2524,50 @@ let memberPortalSettings=null; // v3.35.0 — which Member-portal sections Membe
 let customRoles=[]; // [{id,name,permissions:{overview,contributions,portfolio,accounting,members,kyc,settings,users},builtin:false}]
 
 const PERMISSION_DEFS=[
-  {key:'overview',label:'Overview',desc:'Fund summary, member units, charts',subs:[
+  {key:'overview',label:'Overview',desc:'Fund Summary and Ownership',subs:[
     {key:'overview.fund',label:'Fund Summary'},
     {key:'overview.members',label:'Ownership'},
   ]},
-  {key:'contributions',label:'Transactions',desc:'Deposits, withdrawals, ownership, transfers',subs:[
+  {key:'contributions',label:'Transactions',desc:'Deposits, withdrawals and transfers',subs:[
     {key:'contributions.deposits',label:'Deposits'},
     {key:'contributions.withdrawals',label:'Withdrawals'},
     {key:'contributions.transfers',label:'Transfers'},
   ]},
-  {key:'portfolio',label:'Portfolio',desc:'Register, purchases, sales, income, P&L, valuation',subs:[
-    {key:'portfolio.register',label:'Register'},
-    {key:'portfolio.purchases',label:'Purchases'},
-    {key:'portfolio.sales',label:'Sales'},
-    {key:'portfolio.income',label:'Income'},
-    {key:'portfolio.pnl',label:'P&L'},
-    {key:'portfolio.allocation',label:'Allocation Targets'},
+  {key:'portfolio',label:'Portfolio',desc:'Allocation, valuation, investment register, mutual funds, stocks, fixed income',subs:[
+    {key:'portfolio.allocation',label:'Allocation'},
+    {key:'portfolio.valuation',label:'Valuation'},
+    {key:'portfolio.register',label:'Registers — Investment Register'},
+    {key:'portfolio.purchases',label:'Mutual Funds — Subscriptions'},
+    {key:'portfolio.sales',label:'Mutual Funds — Redemptions'},
+    {key:'portfolio.income',label:'Mutual Funds — Income'},
+    {key:'portfolio.pnl',label:'Mutual Funds — Snapshot'},
     {key:'portfolio.stocksHoldings',label:'Stocks — Holdings'},
     {key:'portfolio.stocksTransactions',label:'Stocks — Transactions'},
     {key:'portfolio.stocksDividends',label:'Stocks — Dividends'},
     {key:'portfolio.fixedIncome',label:'Fixed Income'},
-    {key:'portfolio.valuation',label:'Valuation'},
   ]},
-  {key:'accounting',label:'Accounting',desc:'Journal, ledger, trial balance, statements, corporate actions',subs:[
+  {key:'accounting',label:'Accounting',desc:'Journal, ledger, trial balance, financial statements, corporate actions (Chart of Accounts is ticked under Settings)',subs:[
     {key:'accounting.journal',label:'Journal'},
     {key:'accounting.ledger',label:'General Ledger'},
     {key:'accounting.trialBalance',label:'Trial Balance'},
     {key:'accounting.statements',label:'Financial Statements'},
     {key:'accounting.corpActions',label:'Corporate Actions'},
   ]},
-  {key:'members',label:'Members',desc:'Member list and membership registration',subs:[
+  {key:'members',label:'Members',desc:'Report, Members Register and Projection (KYC is ticked separately)',subs:[
     {key:'members.list',label:'Report'},
     {key:'members.registration',label:'Members Register'},
     {key:'members.projection',label:'Projection'},
   ]},
-  {key:'kyc',label:'KYC',desc:'Bank details and personal identification — sensitive',subs:null},
-  {key:'settings',label:'Settings',desc:'Fund identity, brokers, asset types, chart of accounts, data storage',subs:[
+  {key:'kyc',label:'Members — KYC',desc:'Bank and next-of-kin details — sensitive. Enforced in the database: only Admins and roles with this ticked can read or change KYC.',subs:null},
+  {key:'settings',label:'Settings',desc:'Fund Identity, Data Storage and Projection Assumptions — plus Chart of Accounts (shown under Accounting) and Brokers / Asset Types (shown under Portfolio → Registers)',subs:[
     {key:'settings.fundIdentity',label:'Fund Identity'},
-    {key:'settings.brokers',label:'Brokers'},
-    {key:'settings.assetTypes',label:'Asset Types'},
-    {key:'settings.coa',label:'Chart of Accounts'},
+    {key:'settings.brokers',label:'Brokers (Portfolio → Registers)'},
+    {key:'settings.assetTypes',label:'Asset Types (Portfolio → Registers)'},
+    {key:'settings.coa',label:'Chart of Accounts (Accounting)'},
     {key:'settings.dataStorage',label:'Data Storage'},
     {key:'settings.projection',label:'Projection Assumptions'},
   ]},
-  {key:'users',label:'Users & Access',desc:'Create/edit users and roles — grants control over others\' access',subs:null},
+  {key:'users',label:'Users & Roles',desc:'Settings → Users & Roles: users, roles and Member portal access — grants control over others\' access. Changes to roles and portal access are saved only for Admins (enforced in the database).',subs:null},
 ];
 function allPermissionKeys(){
   const keys=[];
@@ -3111,7 +3169,7 @@ function openFirstPermittedSection(){
 }
 
 /* Render the read-only member portal for Member-role users */
-function renderMemberPortal(){
+function renderPortalOwn(){
   const content=document.getElementById('member-portal-content');
   if(!currentUser||!currentUser.linkedMemberName){
     content.innerHTML='<div class="card"><div class="empty">This account is not linked to a member record. Contact your fund administrator.</div></div>';
@@ -3127,6 +3185,66 @@ function renderMemberPortal(){
   if(getMemberPortalSettings().projection) mountProjection('portal-projection-mount',name);
   else{ const pm=document.getElementById('portal-projection-mount'); if(pm)pm.innerHTML=''; }
 }
+
+/* ══════════════════════════════════════════
+   v3.38.0 — MEMBER PORTAL NAVIGATION & READ-ONLY FUND PAGES
+   The granted pages reuse the staff screens: their sections are moved (once per session — logout
+   reloads the page) out of the hidden app shell into #portal-fund-pages, the fund view is swapped
+   into memory, and the normal renderer runs. .portal-ro CSS hides every edit/delete control.
+══════════════════════════════════════════ */
+var portalPage='own',portalPagesMounted=false;
+function portalCardOf(id){const el=document.getElementById(id);return el?el.closest('.card'):null;}
+function portalChildrenOf(id){const el=document.getElementById(id);return el?[...el.children]:[];}
+const PORTAL_PAGE_SOURCES={
+  fundSummary:{nodes:()=>[document.getElementById('overview-ov-fund')],render:()=>{renderOverview();renderCharts();}},
+  allocation:{nodes:()=>[portalCardOf('allocation-wrap')],render:()=>renderAllocationTable()},
+  mfSnapshot:{nodes:()=>portalChildrenOf('panel-port-pnl'),render:()=>renderPnL()},
+  stocks:{nodes:()=>[portalCardOf('stk-metrics'),portalCardOf('stkh-table-wrap')],render:()=>renderStockHoldings()},
+  trialBalance:{nodes:()=>portalChildrenOf('panel-trial-balance'),render:()=>renderTrialBalance()},
+  finStatements:{nodes:()=>portalChildrenOf('panel-statements'),render:()=>renderStatements()},
+};
+function mountPortalPages(){
+  if(portalPagesMounted) return;
+  const host=document.getElementById('portal-fund-pages');if(!host)return;
+  Object.keys(PORTAL_PAGE_SOURCES).forEach(key=>{
+    const page=document.createElement('div');page.id='portal-page-'+key;page.style.display='none';
+    PORTAL_PAGE_SOURCES[key].nodes().filter(Boolean).forEach(n=>{page.appendChild(n);if(n.style&&n.style.display==='none')n.style.display='';});
+    host.appendChild(page);
+  });
+  portalPagesMounted=true;
+}
+function portalGrantedPages(){
+  if(!portalStatement||!portalStatement.fundView) return [];
+  const mp=getMemberPortalSettings();
+  return PORTAL_FUND_DEFS.filter(d=>mp[d.key]&&PORTAL_PAGE_SOURCES[d.key]);
+}
+function renderPortalNav(){
+  const nav=document.getElementById('portal-nav');if(!nav)return;
+  const pages=portalGrantedPages();
+  if(!pages.length){nav.style.display='none';nav.innerHTML='';return;}
+  nav.style.display='flex';
+  nav.innerHTML=[{key:'own',short:'My account'},...pages].map(p=>`<button type="button" class="${portalPage===p.key?'btn-primary':''}" onclick="showPortalPage('${p.key}')" style="font-size:12px;padding:6px 12px">${esc(p.short)}</button>`).join('');
+}
+function showPortalPage(key){
+  const granted=portalGrantedPages();
+  if(key!=='own'&&!granted.some(d=>d.key===key)) key='own';
+  portalPage=key;
+  renderPortalNav();
+  const own=document.getElementById('portal-own-wrap'),fp=document.getElementById('portal-fund-pages');
+  if(key==='own'){
+    applyStatementToGlobals(portalStatement);
+    if(fp)fp.style.display='none';if(own)own.style.display='';
+    renderPortalOwn();
+    return;
+  }
+  mountPortalPages();
+  applyFundViewToGlobals(portalStatement.fundView);
+  if(own)own.style.display='none';if(fp)fp.style.display='';
+  document.querySelectorAll('#portal-fund-pages > div').forEach(d=>{d.style.display=(d.id==='portal-page-'+key)?'':'none';});
+  try{PORTAL_PAGE_SOURCES[key].render();}catch(e){console.warn('Portal page render failed:',e);}
+}
+/* Render the Member portal: own statement by default, plus a page bar when fund pages are granted. */
+function renderMemberPortal(){ showPortalPage(portalPage||'own'); }
 
 /* ── Users & Access management (Admin only) ── */
 function syncUserRoleDropdown(){
@@ -3461,8 +3579,9 @@ function removeRole(id){
    MEMBER PORTAL ACCESS (v3.35.0)
    Admin chooses which sections of the Member portal Members see. Stored as `memberPortal` beside
    customRoles (USERS_KEY object, synced on the funds/{fundId} doc). Absent key = on, so existing
-   funds behave exactly as before. UI-level only: Firestore rules still let any active fund member
-   read the fund document, so this is not a database-level restriction.
+   funds behave exactly as before. Since v3.36.0 portal Members read only their own
+   funds/{fundId}/statements/{uid} doc (never the fund doc), so these switches choose which parts of
+   that own-record statement the portal shows; only Admins can change them (Firestore rules).
 ══════════════════════════════════════════ */
 const MEMBER_PORTAL_DEFS=[
   {key:'summary',label:'Account summary',desc:'Units held, current value, cost basis, gain/loss and the underwater / break-even notice'},
@@ -3470,17 +3589,42 @@ const MEMBER_PORTAL_DEFS=[
   {key:'transactions',label:'Transaction history',desc:'Their own subscriptions, redemptions and transfers with running units'},
   {key:'projection',label:'Investment projection',desc:'The growth projection calculator and explanation'},
   {key:'pdf',label:'PDF & email statement',desc:'Buttons to download or email their statement'},
+  // v3.38.0 — read-only fund pages (off unless switched on for all Members or granted per member)
+  {key:'fundSummary',fund:true,short:'Fund Summary',label:'Overview — Fund Summary',desc:'Full page: fund snapshot, NAV performance, charts (members shown by ID), performance &amp; outlook'},
+  {key:'allocation',fund:true,short:'Allocation',label:'Portfolio — Allocation',desc:'Target vs actual allocation table only'},
+  {key:'mfSnapshot',fund:true,short:'MF Snapshot',label:'Portfolio — Mutual Funds — Snapshot',desc:'Full page'},
+  {key:'stocks',fund:true,short:'Stocks',label:'Portfolio — Stocks — Holdings',desc:'Stocks summary and holdings register (view only)'},
+  {key:'trialBalance',fund:true,short:'Trial Balance',label:'Accounting — Trial Balance',desc:'Full page'},
+  {key:'finStatements',fund:true,short:'Financial Statements',label:'Accounting — Financial Statements',desc:'Full page'},
 ];
+const PORTAL_FUND_DEFS=MEMBER_PORTAL_DEFS.filter(d=>d.fund);
 function getMemberPortalSettings(){
+  // own-account sections: absent = on (v3.35.0); fund pages (v3.38.0): absent = off
   const st=memberPortalSettings||{},o={};
-  MEMBER_PORTAL_DEFS.forEach(d=>{o[d.key]=st[d.key]!==false;});
+  MEMBER_PORTAL_DEFS.forEach(d=>{o[d.key]=d.fund?st[d.key]===true:st[d.key]!==false;});
   return o;
 }
+/* v3.38.0 — effective access for one portal user: the all-Members settings plus any fund pages
+   granted to that user individually (memberPortal.perUser[uid]). Grants only ever add access. */
+function getPortalAccessFor(uid){
+  const o=getMemberPortalSettings();
+  const per=(memberPortalSettings&&memberPortalSettings.perUser&&memberPortalSettings.perUser[uid])||{};
+  PORTAL_FUND_DEFS.forEach(d=>{if(per[d.key]===true)o[d.key]=true;});
+  return o;
+}
+function portalFundKeys(acc){ return PORTAL_FUND_DEFS.filter(d=>acc&&acc[d.key]).map(d=>d.key); }
+
 function memberPortalSummary(){
   const c=getMemberPortalSettings();
-  const on=MEMBER_PORTAL_DEFS.filter(d=>c[d.key]).map(d=>d.label);
-  return 'View-only member portal — own records only. Sees: '+(on.length?on.join(', '):'only their name (nothing else enabled)')+'.';
+  const on=MEMBER_PORTAL_DEFS.filter(d=>!d.fund&&c[d.key]).map(d=>d.label);
+  const fundOn=PORTAL_FUND_DEFS.filter(d=>c[d.key]).map(d=>d.short);
+  const per=(memberPortalSettings&&memberPortalSettings.perUser)||{};
+  const extra=Object.keys(per).filter(uid=>Object.values(per[uid]||{}).some(Boolean)).length;
+  return 'View-only member portal — own records only. Sees: '+(on.length?on.join(', '):'only their name (nothing else enabled)')+'.'
+    +(fundOn.length?' Read-only fund pages for all Members: '+fundOn.join(', ')+'.':'')
+    +(extra?' Extra fund pages granted to '+extra+' member'+(extra!==1?'s':'')+'.':'');
 }
+
 function removeMemberRole(){
   if(!hasPermission('users')){alert('Access denied — restricted for your role.');return;}
   const assigned=users.filter(u=>u.role==='Member');
@@ -3508,12 +3652,32 @@ function renderMemberPortalSettingsCard(){
     return;
   }
   const cur=getMemberPortalSettings();
+  const box=(d)=>`<label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;margin:0;background:#f4f4f2;border-radius:8px;padding:10px 12px"><input type="checkbox" id="mp-${d.key}" ${cur[d.key]?'checked':''} style="width:auto;margin-top:2px;cursor:pointer;accent-color:#1d6f42"/><span><div style="font-weight:600;font-size:12px">${esc(d.label)}</div><div style="font-size:11px;color:#888780">${d.desc}</div></span></label>`;
+  const grid=defs=>'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:8px;margin-bottom:12px">'+defs.map(box).join('')+'</div>';
+  const sub=t=>`<div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:#5f5e5a;margin:14px 0 6px">${t}</div>`;
+  const portalUsers=users.filter(u=>u.uid&&isPortalRole(u.role)&&u.active!==false);
+  const per=(memberPortalSettings&&memberPortalSettings.perUser)||{};
+  const idFor=u=>{const r=membersRegistry.find(m=>m.name===u.linkedMemberName);return r&&r.memberId?r.memberId:'';};
+  let perHtml;
+  if(!portalUsers.length) perHtml='<div class="empty">No active Member-role users yet.</div>';
+  else perHtml='<div style="overflow-x:auto"><table><thead><tr><th>Member user</th>'
+    +PORTAL_FUND_DEFS.map(d=>`<th style="text-align:center;font-size:10px">${esc(d.short)}</th>`).join('')+'</tr></thead><tbody>'
+    +portalUsers.map(u=>`<tr><td><strong>${esc(u.username||u.email||'')}</strong><div style="font-size:10px;color:#888780">${esc(idFor(u)||u.linkedMemberName||'not linked')}${idFor(u)&&u.linkedMemberName?' · '+esc(u.linkedMemberName):''}</div></td>`
+      +PORTAL_FUND_DEFS.map(d=>{const onAll=cur[d.key];const on=onAll||!!(per[u.uid]&&per[u.uid][d.key]);
+        return `<td style="text-align:center"><input type="checkbox" class="mpu-box" data-uid="${esc(u.uid)}" data-key="${d.key}" ${on?'checked':''} ${onAll?'disabled title="Already on for all Members"':''} style="width:auto;cursor:pointer;accent-color:#1d6f42"/></td>`;}).join('')
+      +'</tr>').join('')+'</tbody></table></div>';
   wrap.innerHTML='<div class="card" id="member-portal-card"><div class="card-title">Member portal access</div>'
-    +'<div style="font-size:12px;color:#5f5e5a;line-height:1.6;margin-bottom:10px">Choose which parts of their own account users with the <strong>Member</strong> role can see. This applies to every Member, and they only ever see their own records. It controls what the portal displays — it is not a database-level restriction.</div>'
-    +'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:8px;margin-bottom:12px">'
-    +MEMBER_PORTAL_DEFS.map(d=>`<label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;margin:0;background:#f4f4f2;border-radius:8px;padding:10px 12px"><input type="checkbox" id="mp-${d.key}" ${cur[d.key]?'checked':''} style="width:auto;margin-top:2px;cursor:pointer;accent-color:#1d6f42"/><span><div style="font-weight:600;font-size:12px">${esc(d.label)}</div><div style="font-size:11px;color:#888780">${d.desc}</div></span></label>`).join('')
-    +'</div><div style="display:flex;gap:8px"><button class="btn-primary" onclick="saveMemberPortalSettings()">Save member access</button><button onclick="resetMemberPortalSettings()">Reset to all on</button></div></div>';
+    +'<div style="font-size:12px;color:#5f5e5a;line-height:1.6;margin-bottom:10px">Choose what users with the <strong>Member</strong> role can see. Each Member account can read only its own statement record in the database (since v3.36.0), so it can never reach other members&rsquo; details, KYC or anything it was not given here.</div>'
+    +sub('Their own account — all Members')+grid(MEMBER_PORTAL_DEFS.filter(d=>!d.fund))
+    +sub('Read-only fund pages — all Members')
+    +'<div style="font-size:11px;color:#888780;line-height:1.6;margin-bottom:8px">Members see these pages as staff do, but cannot add, edit or delete anything. Member names are replaced by Member IDs, and notes and journal descriptions are removed. The data behind the pages is copied into each granted member&rsquo;s own statement record only — members without access never receive it.</div>'
+    +grid(PORTAL_FUND_DEFS)
+    +sub('Extra fund pages for individual members')
+    +'<div style="font-size:11px;color:#888780;line-height:1.6;margin-bottom:8px">Tick a page for one member to give them more access when necessary. Pages already on for all Members are shown ticked and greyed out.</div>'
+    +perHtml
+    +'<div style="display:flex;gap:8px;margin-top:12px"><button class="btn-primary" onclick="saveMemberPortalSettings()">Save member access</button><button onclick="resetMemberPortalSettings()">Reset to defaults</button></div></div>';
 }
+
 function focusMemberPortalCard(){
   const el=document.getElementById('member-portal-card');
   if(el)el.scrollIntoView({behavior:'smooth',block:'center'});
@@ -3521,17 +3685,25 @@ function focusMemberPortalCard(){
 function saveMemberPortalSettings(){
   if(!hasPermission('users')){alert('Access denied — restricted for your role.');return;}
   const st={};
-  MEMBER_PORTAL_DEFS.forEach(d=>{const el=document.getElementById('mp-'+d.key);st[d.key]=el?el.checked:true;});
-  if(!Object.values(st).some(v=>v)&&!confirm('Nothing is enabled — Members will see only their name. Continue?'))return;
+  MEMBER_PORTAL_DEFS.forEach(d=>{const el=document.getElementById('mp-'+d.key);st[d.key]=el?el.checked:!d.fund;});
+  const perUser={};
+  document.querySelectorAll('#member-portal-card .mpu-box').forEach(el=>{
+    if(el.disabled||!el.checked) return;
+    const uid=el.dataset.uid;(perUser[uid]=perUser[uid]||{})[el.dataset.key]=true;
+  });
+  if(Object.keys(perUser).length) st.perUser=perUser;
+  if(!MEMBER_PORTAL_DEFS.some(d=>!d.fund&&st[d.key])&&!confirm('No own-account section is enabled — Members will see only their name (plus any fund pages granted). Continue?'))return;
   memberPortalSettings=st;
   saveUsers();renderRolesTable();
-  setStatus('Member portal access saved.');
+  setStatus('Member portal access saved — members see the change after the next save/sync.');
 }
+
 function resetMemberPortalSettings(){
   if(!hasPermission('users')){alert('Access denied — restricted for your role.');return;}
+  if(!confirm('Reset Member portal access to the defaults? All own-account sections on, every fund page off, and all individual grants removed.'))return;
   memberPortalSettings=null;
   saveUsers();renderRolesTable();
-  setStatus('Member portal access reset — all sections on.');
+  setStatus('Member portal access reset to defaults.');
 }
 
 function summarizeRoleAccess(perms){
@@ -9964,7 +10136,7 @@ function renderPnL(){
   const netCapital=totalDeposits-totalWithdrawals;
   const totalPurchases=purchases.reduce((s,p)=>s+p.amount,0);
   const totalPurchaseFees=purchases.reduce((s,p)=>s+(p.fee||0),0);
-  const cashAvail=Math.max(netCapital-totalPurchases-totalPurchaseFees,0);
+  const cashAvail=getAccountBalanceWithDescendants('1000',null); // v3.37.2 — ledger Cash and Cash Equivalents incl. sub-accounts, same as Overview (v3.35.2)
   const totalProceeds=sales.reduce((s,s2)=>s+s2.proceeds,0);
   const totalCostSold=sales.reduce((s,s2)=>s+s2.costBasis,0);
   const realisedGL=totalProceeds-totalCostSold;
@@ -9978,13 +10150,13 @@ function renderPnL(){
   const totalReturn=realisedGL+totalIncome+unrealisedGL;
   const totalReturnPct=netCapital>0?(totalReturn/netCapital*100):0;
   const gc=n=>n>=0?'#3b6d11':'#a32d2d';
-  const gs=n=>n>=0?'+':'';
+  const gs=n=>n>=0?'+':'-'; // v3.37.2 — negatives now show a minus sign, not just red
   snap.innerHTML=`
     <div class="metrics">
       <div class="metric"><div class="metric-label">Total subscriptions</div><div class="metric-val">${fmt(totalDeposits)}</div><div class="metric-sub">Gross member deposits</div></div>
       <div class="metric"><div class="metric-label">Total redemptions</div><div class="metric-val" style="color:#a32d2d">${fmt(totalWithdrawals)}</div><div class="metric-sub">Gross member withdrawals</div></div>
       <div class="metric"><div class="metric-label">Net capital</div><div class="metric-val" style="color:#0c447c">${fmt(netCapital)}</div><div class="metric-sub">Subscriptions minus redemptions</div></div>
-      <div class="metric"><div class="metric-label">Cash available</div><div class="metric-val">${fmt(cashAvail)}</div><div class="metric-sub">Net capital minus purchases</div></div>
+      <div class="metric"><div class="metric-label">Cash available</div><div class="metric-val" style="color:${cashAvail<-0.005?'#a32d2d':''}">${cashAvail<0?'-':''}${fmt(Math.abs(cashAvail))}</div><div class="metric-sub">Cash &amp; equivalents per ledger</div></div>
     </div>
     <div class="metrics">
       <div class="metric"><div class="metric-label">Total invested (cost)</div><div class="metric-val">${fmt(totalPurchases)}</div><div class="metric-sub">All purchase amounts</div></div>
@@ -9994,7 +10166,7 @@ function renderPnL(){
     <div class="metrics">
       <div class="metric"><div class="metric-label">Realised gain / loss</div><div class="metric-val" style="color:${gc(realisedGL)}">${gs(realisedGL)}${fmt(Math.abs(realisedGL))}</div><div class="metric-sub">From ${sales.length} sale${sales.length!==1?'s':''}</div></div>
       <div class="metric"><div class="metric-label">Total income received</div><div class="metric-val" style="color:#3b6d11">${fmt(totalIncome)}</div><div class="metric-sub">Dividends, interest &amp; other</div></div>
-      <div class="metric" style="background:#eaf3de"><div class="metric-label">Total return</div><div class="metric-val" style="color:${gc(totalReturn)};font-size:20px">${gs(totalReturn)}${fmt(Math.abs(totalReturn))}</div><div class="metric-sub" style="color:${gc(totalReturn)}">${gs(totalReturnPct)}${totalReturnPct.toFixed(2)}% on net capital</div></div>
+      <div class="metric" style="background:#eaf3de"><div class="metric-label">Total return</div><div class="metric-val" style="color:${gc(totalReturn)};font-size:20px">${gs(totalReturn)}${fmt(Math.abs(totalReturn))}</div><div class="metric-sub" style="color:${gc(totalReturn)}">${totalReturnPct>=0?'+':''}${totalReturnPct.toFixed(2)}% on net capital</div></div>
     </div>`;
   // Income breakdown by asset
   const incWrap=document.getElementById('pnl-income-breakdown');
@@ -10012,7 +10184,7 @@ function renderPnL(){
       let rows='';
       sorted.forEach(([key,a])=>{
         const types=Object.entries(a.breakdown).map(([t,v])=>`<span class="tag tag-green" style="margin-right:3px">${esc(t)}: ${fmt(v)}</span>`).join('');
-        rows+=`<tr><td style="font-size:11px;font-weight:600;color:#0c447c">${esc(key)}</td><td>${esc(a.label)}</td><td>${esc(types)}</td><td class="num" style="font-weight:600;color:#3b6d11">${fmt(a.total)}</td></tr>`;
+        rows+=`<tr><td style="font-size:11px;font-weight:600;color:#0c447c">${esc(key)}</td><td>${esc(a.label)}</td><td>${types}</td><td class="num" style="font-weight:600;color:#3b6d11">${fmt(a.total)}</td></tr>`;
       });
       const grand=incomeRecords.reduce((s,r)=>s+r.amount,0);
       incWrap.innerHTML='<div style="overflow-x:auto"><table><thead><tr>'
