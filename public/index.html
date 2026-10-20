@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Like Minds Reimagined — v3.39.0</title>
+<title>Like Minds Reimagined — v3.39.1</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
@@ -6891,8 +6891,7 @@ function renderAssetValuator(){
     h+=`<div style="font-size:11px;font-weight:600;color:#5f5e5a;text-transform:uppercase;letter-spacing:.05em;padding:6px 0 4px;border-bottom:0.5px solid #e8e6df;margin-bottom:8px">${esc(typeName)}</div>`;
     items.forEach(p=>{
       const prev=lastAssetValues[p.assetId]||0;
-      const totalCost=purchases.filter(x=>x.assetId===p.assetId&&x.date<=valDate).reduce((s,x)=>s+x.amount,0)
-        +computeAssetIdStockCostBasis(p.assetId,valDate);
+      const totalCost=computeRemainingCostBasis(p.assetId,valDate); // v3.39.1 — net of redeemed cost
       const glStyle=prev&&totalCost?(prev<totalCost?'border-color:#f09595;color:#a32d2d;':'border-color:#c0dd97;'):'';
       const glBadge=prev&&totalCost?`<span style="font-size:10px;font-weight:600;color:${prev>=totalCost?'#3b6d11':'#a32d2d'}">${prev>=totalCost?'▲':'▼'} ${Math.abs(((prev-totalCost)/totalCost*100)).toFixed(1)}% vs cost</span>`:'';
       h+=`<div style="display:flex;align-items:center;gap:10px;padding:8px 4px;border-bottom:0.5px solid #f0ede4;flex-wrap:wrap">
@@ -7241,7 +7240,7 @@ function injectNAVRowDetail(id){
       <th style="text-align:right;padding:4px 8px;border-bottom:0.5px solid #d3d1c7;color:#888780;font-size:11px">Value at ${esc(v.date)}</th>
       <th style="text-align:right;padding:4px 8px;border-bottom:0.5px solid #d3d1c7;color:#888780;font-size:11px">G / L</th>
     </tr></thead><tbody>`;
-  let totalValue=0;let totalCost=0;
+  let totalValue=0;let totalCost=0;let totalInvValue=0;
   allIds.forEach(assetId=>{
     const isCash=assetId==='CASH';
     const val=assetVals[assetId];
@@ -7249,9 +7248,10 @@ function injectNAVRowDetail(id){
     const portItem=portfolioItems.find(p=>p.assetId===assetId);
     const typeLabel=isCash?'Cash':(portItem?getAssetLabelFull(portItem.assetType):'—');
     const desc=isCash?'Fund cash balance':(portItem?(portItem.description||portItem.broker||'—'):'—');
-    const cost=isCash?0:(purchases.filter(p=>p.assetId===assetId&&p.date<=v.date).reduce((s,p)=>s+p.amount,0)
-      +computeAssetIdStockCostBasis(assetId,v.date));
+    // v3.39.1 — remaining cost at the valuation date (redeemed cost taken out), not gross subscriptions
+    const cost=isCash?0:computeRemainingCostBasis(assetId,v.date);
     totalCost+=cost;
+    if(!isCash) totalInvValue+=val||0;
     const gl=(!isCash&&cost)?(val-cost):null;
     const glPct=(!isCash&&cost)?((val-cost)/cost*100):null;
     const glCol=gl===null?'#888780':gl>=0?'#3b6d11':'#a32d2d';
@@ -7266,8 +7266,9 @@ function injectNAVRowDetail(id){
       </td>
     </tr>`;
   });
-  const totalGL=totalCost?(totalValue-totalCost):null;
-  const totalGLPct=totalCost?((totalValue-totalCost)/totalCost*100):null;
+  // v3.39.1 — G/L on investments only; cash is in the Value total but has no cost and is not a gain
+  const totalGL=totalCost?(totalInvValue-totalCost):null;
+  const totalGLPct=totalCost?((totalInvValue-totalCost)/totalCost*100):null;
   const totGLCol=totalGL===null?'#888780':totalGL>=0?'#3b6d11':'#a32d2d';
   h+=`<tr style="background:#f4f4f2;font-weight:600">
     <td colspan="3" style="padding:5px 8px">Total</td>
