@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Like Minds Reimagined — v3.40.1</title>
+<title>Like Minds Reimagined — v3.41.0</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
@@ -1330,22 +1330,24 @@ tr:last-child td{border-bottom:none}
 <!-- PORTFOLIO P&L -->
 <div id="panel-port-pnl" class="panel p-profit">
   <div class="card">
-    <div class="card-title">Snapshot by fund</div>
-    <div style="font-size:12px;color:#5f5e5a;margin-bottom:12px;line-height:1.6">Each registered investment's cost basis, current value, and gain/loss — current value comes from the latest portfolio valuation's per-investment breakdown where available, falling back to remaining cost basis otherwise.</div>
-    <div id="pnl-fund-breakdown"><div class="empty">No investments registered yet — add one via Portfolio → Mutual Funds → Register.</div></div>
+    <div class="card-title">Mutual funds &mdash; position by fund</div>
+    <div style="font-size:12px;color:#5f5e5a;margin-bottom:12px;line-height:1.6">Each mutual fund the fund holds: the amount subscribed, the cost still invested after redemptions, its value at the latest portfolio valuation (estimated at cost where a fund was not priced), and the gains and income it has produced. Stocks and other asset types are not shown here &mdash; see Portfolio &rarr; Stocks &rarr; Holdings.</div>
+    <div id="pnl-fund-breakdown"><div class="empty">No mutual funds registered yet — add one via Portfolio &rarr; Registers &rarr; Investment Register.</div></div>
   </div>
   <div class="card">
-    <div class="card-title" data-tip="Fund-wide profit and loss since launch: the money members put in and took out, what the fund invested, what the members' units are worth now, and the gains and income earned along the way.">Fund P&amp;L summary<span class="tip-i">&#9432;</span></div>
-    <div style="font-size:12px;color:#5f5e5a;margin-bottom:12px;line-height:1.6">Complete fund economics: capital deployed, income earned, gains realised, distributions paid, and current unrealised position.</div>
-    <div id="pnl-snapshot"><div class="empty">Record purchases, sales, and income to see the P&amp;L.</div></div>
+    <div class="card-title" data-tip="Totals across all mutual funds only. Hover a figure for what it means.">Mutual funds &mdash; P&amp;L summary<span class="tip-i">&#9432;</span></div>
+    <div style="font-size:12px;color:#5f5e5a;margin-bottom:12px;line-height:1.6">Totals across all mutual funds: what was subscribed and redeemed, the cost still invested and what it is worth now, and the return earned &mdash; realised, unrealised and income &mdash; before and after broker transfer fees.</div>
+    <div id="pnl-snapshot"><div class="empty">Record mutual fund subscriptions, redemptions and income to see the P&amp;L.</div></div>
   </div>
   <div class="card">
-    <div class="card-title">Income by asset</div>
-    <div id="pnl-income-breakdown"><div class="empty">No income recorded yet.</div></div>
+    <div class="card-title">Mutual fund income by fund</div>
+    <div style="font-size:12px;color:#5f5e5a;margin-bottom:12px;line-height:1.6">Dividends, interest and other income paid by each mutual fund. Fund-level income such as bank interest is not a mutual fund return and is not shown here &mdash; it appears in Accounting &rarr; Financial Statements.</div>
+    <div id="pnl-income-breakdown"><div class="empty">No mutual fund income recorded yet.</div></div>
   </div>
   <div class="card">
-    <div class="card-title">Realised gains &amp; losses</div>
-    <div id="pnl-sales-breakdown"><div class="empty">No sales recorded yet.</div></div>
+    <div class="card-title">Mutual fund redemptions &mdash; realised gains &amp; losses</div>
+    <div style="font-size:12px;color:#5f5e5a;margin-bottom:12px;line-height:1.6">Each redemption from a mutual fund: the cost of the part redeemed, the cash received, and the gain or loss locked in.</div>
+    <div id="pnl-sales-breakdown"><div class="empty">No mutual fund redemptions recorded yet.</div></div>
   </div>
 </div>
 
@@ -3713,7 +3715,7 @@ const MEMBER_PORTAL_DEFS=[
   // v3.38.0 — read-only fund pages (off unless switched on for all Members or granted per member)
   {key:'fundSummary',fund:true,short:'Fund Summary',label:'Overview — Fund Summary',desc:'Full page: fund snapshot, NAV performance, charts (members shown by ID), performance &amp; outlook'},
   {key:'allocation',fund:true,short:'Allocation',label:'Portfolio — Allocation',desc:'Target vs actual allocation table only'},
-  {key:'mfSnapshot',fund:true,short:'MF Snapshot',label:'Portfolio — Mutual Funds — Snapshot',desc:'Full page'},
+  {key:'mfSnapshot',fund:true,short:'MF Snapshot',label:'Portfolio — Mutual Funds — Snapshot',desc:'Full page (mutual funds only)'},
   {key:'stocks',fund:true,short:'Stocks',label:'Portfolio — Stocks — Holdings',desc:'Stocks summary and holdings register (view only)'},
   {key:'trialBalance',fund:true,short:'Trial Balance',label:'Accounting — Trial Balance',desc:'Full page'},
   {key:'finStatements',fund:true,short:'Financial Statements',label:'Accounting — Financial Statements',desc:'Full page'},
@@ -10536,139 +10538,145 @@ function getFundSnapshotRows(){
       costBasis,remainingCost,currentValue,hasMarketValue,realizedGL,unrealizedGL,incomeReceived,totalReturn,returnPct};
   });
 }
+/* v3.41.0 — which registered investments are mutual funds (Snapshot shows nothing else) */
+function isMutualFundAsset(item){
+  if(!item) return false;
+  const id=item.assetId;
+  if(stockTxns.some(t=>t.assetId===id)) return false;
+  if(purchases.some(p=>p.assetId===id)||sales.some(x=>x.assetId===id)) return true;
+  if(item.assetType==='ETF'||item.assetType==='STK') return false;
+  return /fund/i.test(getAssetLabelFull(item.assetType)||'');
+}
+function getMutualFundIds(){ return new Set(portfolioItems.filter(isMutualFundAsset).map(p=>p.assetId)); }
 function renderFundSnapshotBreakdown(){
   const wrap=document.getElementById('pnl-fund-breakdown');if(!wrap)return;
-  const rows=getFundSnapshotRows();
-  if(!rows.length){wrap.innerHTML='<div class="empty">No investments registered yet — add one via Portfolio → Mutual Funds → Register.</div>';return;}
+  const mf=getMutualFundIds();
+  const rows=getFundSnapshotRows().filter(r=>mf.has(r.assetId));
+  if(!rows.length){wrap.innerHTML='<div class="empty">No mutual funds registered yet — add one via Portfolio → Registers → Investment Register.</div>';return;}
   const lastVal=navValuations.length?[...navValuations].sort((a,b)=>b.date.localeCompare(a.date))[0]:null;
-  const asOfNote=lastVal?`Current values as of the ${esc(lastVal.date)} valuation where available.`:'No valuation recorded yet — current values are estimated from remaining cost basis.';
+  const asOfNote=lastVal?`Current values as of the ${esc(lastVal.date)} valuation where available.`:'No valuation recorded yet — current values are estimated from the cost still invested.';
   let h=`<div style="font-size:11px;color:#888780;margin-bottom:8px">${asOfNote}</div>`;
   h+='<div style="overflow-x:auto"><table><thead><tr>'
-    +'<th style="width:130px">Asset ID</th><th style="width:110px">Type</th><th>Broker</th>'
-    +'<th class="num" style="width:110px">Cost basis</th><th class="num" style="width:120px">Current value</th>'
+    +'<th style="min-width:170px">Mutual fund</th><th style="width:110px">Type</th>'
+    +'<th class="num" style="width:110px">Subscribed</th><th class="num" style="width:110px">Cost still invested</th><th class="num" style="width:120px">Current value</th>'
     +'<th class="num" style="width:100px">Realised G/L</th><th class="num" style="width:100px">Unrealised G/L</th>'
     +'<th class="num" style="width:100px">Income</th><th class="num" style="width:110px">Total return</th>'
     +'</tr></thead><tbody>';
-  let tCost=0,tCur=0,tReal=0,tUnreal=0,tInc=0,tTot=0;
+  let tCost=0,tRem=0,tCur=0,tReal=0,tUnreal=0,tInc=0,tTot=0;
+  const col=n=>n>=0?'#3b6d11':'#a32d2d';
   rows.forEach(r=>{
-    tCost+=r.costBasis;tCur+=r.currentValue;tReal+=r.realizedGL;tUnreal+=r.unrealizedGL;tInc+=r.incomeReceived;tTot+=r.totalReturn;
-    const realCol=r.realizedGL>=0?'#3b6d11':'#a32d2d';
-    const unrealCol=r.unrealizedGL>=0?'#3b6d11':'#a32d2d';
-    const totCol=r.totalReturn>=0?'#3b6d11':'#a32d2d';
+    tCost+=r.costBasis;tRem+=r.remainingCost;tCur+=r.currentValue;tReal+=r.realizedGL;tUnreal+=r.unrealizedGL;tInc+=r.incomeReceived;tTot+=r.totalReturn;
     h+=`<tr>
-      <td style="font-size:11px;font-weight:600;color:#0c447c">${esc(r.assetId)}${r.description?`<div style="font-size:10px;color:#888780;font-weight:400">${esc(r.description)}</div>`:''}</td>
+      <td style="font-size:11px;font-weight:600;color:#0c447c">${esc(r.assetId)}${(r.description||r.broker)?`<div style="font-size:10px;color:#888780;font-weight:400">${esc([r.description,r.broker].filter(Boolean).join(' · '))}</div>`:''}</td>
       <td><span class="tag tag-purple">${esc(getAssetLabelFull(r.assetType)||'—')}</span></td>
-      <td style="font-size:12px">${esc(r.broker||'—')}</td>
       <td class="num">${fmt(r.costBasis)}</td>
+      <td class="num">${fmt(r.remainingCost)}</td>
       <td class="num" style="font-weight:600">${fmt(r.currentValue)}${!r.hasMarketValue?'<div style="font-size:9px;color:#c9a227">est.</div>':''}</td>
-      <td class="num" style="color:${realCol}">${r.realizedGL?((r.realizedGL>=0?'+':'')+fmt(r.realizedGL)):'—'}</td>
-      <td class="num" style="color:${unrealCol}">${(r.unrealizedGL>=0?'+':'')+fmt(r.unrealizedGL)}</td>
+      <td class="num" style="color:${col(r.realizedGL)}">${r.realizedGL?((r.realizedGL>=0?'+':'')+fmt(r.realizedGL)):'—'}</td>
+      <td class="num" style="color:${col(r.unrealizedGL)}">${(r.unrealizedGL>=0?'+':'')+fmt(r.unrealizedGL)}</td>
       <td class="num" style="color:#3b6d11">${r.incomeReceived?fmt(r.incomeReceived):'—'}</td>
-      <td class="num" style="font-weight:600;color:${totCol}">${(r.totalReturn>=0?'+':'')+fmt(r.totalReturn)}${r.returnPct!==null?`<div style="font-size:10px;font-weight:400">${r.returnPct>=0?'+':''}${r.returnPct.toFixed(1)}%</div>`:''}</td>
+      <td class="num" style="font-weight:600;color:${col(r.totalReturn)}">${(r.totalReturn>=0?'+':'')+fmt(r.totalReturn)}${r.returnPct!==null?`<div style="font-size:10px;font-weight:400">${r.returnPct>=0?'+':''}${r.returnPct.toFixed(1)}%</div>`:''}</td>
     </tr>`;
   });
-  const tRealCol=tReal>=0?'#3b6d11':'#a32d2d';
-  const tUnrealCol=tUnreal>=0?'#3b6d11':'#a32d2d';
-  const tTotCol=tTot>=0?'#3b6d11':'#a32d2d';
   h+=`<tr class="tfoot-row">
-    <td colspan="3">Total (${rows.length} fund${rows.length!==1?'s':''})</td>
+    <td colspan="2">Total (${rows.length} mutual fund${rows.length!==1?'s':''})</td>
     <td class="num">${fmt(tCost)}</td>
+    <td class="num">${fmt(tRem)}</td>
     <td class="num">${fmt(tCur)}</td>
-    <td class="num" style="color:${tRealCol}">${(tReal>=0?'+':'')+fmt(tReal)}</td>
-    <td class="num" style="color:${tUnrealCol}">${(tUnreal>=0?'+':'')+fmt(tUnreal)}</td>
+    <td class="num" style="color:${col(tReal)}">${(tReal>=0?'+':'')+fmt(tReal)}</td>
+    <td class="num" style="color:${col(tUnreal)}">${(tUnreal>=0?'+':'')+fmt(tUnreal)}</td>
     <td class="num" style="color:#3b6d11">${fmt(tInc)}</td>
-    <td class="num" style="color:${tTotCol}">${(tTot>=0?'+':'')+fmt(tTot)}</td>
+    <td class="num" style="color:${col(tTot)}">${(tTot>=0?'+':'')+fmt(tTot)}${tCost>0?`<div style="font-size:10px;font-weight:400">${tTot>=0?'+':''}${(tTot/tCost*100).toFixed(1)}%</div>`:''}</td>
   </tr>`;
   h+='</tbody></table></div>';
   wrap.innerHTML=h;
 }
+
 function renderPnL(){
   renderFundSnapshotBreakdown();
   const snap=document.getElementById('pnl-snapshot');if(!snap)return;
-  const totalDeposits=deposits.reduce((s,d)=>s+d.amount,0);
-  const totalWithdrawals=withdrawals.reduce((s,w)=>s+w.amount,0);
-  const netCapital=totalDeposits-totalWithdrawals;
-  const totalPurchases=purchases.reduce((s,p)=>s+p.amount,0);
-  const totalPurchaseFees=purchases.reduce((s,p)=>s+(p.fee||0),0);
-  const cashAvail=getAccountBalanceWithDescendants('1000',null); // v3.37.2 — ledger Cash and Cash Equivalents incl. sub-accounts, same as Overview (v3.35.2)
-  const totalProceeds=sales.reduce((s,s2)=>s+s2.proceeds,0);
-  const totalCostSold=sales.reduce((s,s2)=>s+s2.costBasis,0);
-  const realisedGL=totalProceeds-totalCostSold;
-  const totalIncome=incomeRecords.reduce((s,r)=>s+r.amount,0);
-  const currentNAV=getCurrentNAV();
-  const depUnits=deposits.reduce((s,d)=>s+(d.units||0),0);
-  const wdwUnits=withdrawals.reduce((s,w)=>s+(w.units||0),0);
-  const netUnits=Math.max(depUnits-wdwUnits,0);
-  const fundValueAtNAV=netUnits*currentNAV;
-  // v3.40.1 — fund value at NAV already contains realised gains, income and fees, so the members' gain
-  // (fund value − net capital) IS the total return. Unrealised is what remains after the other parts.
-  const totalReturn=fundValueAtNAV-netCapital;
-  const totalExpenses=getAllAccounts().filter(a=>a.type==='Expense').reduce((s,a)=>s+getAccountBalance(a.code,null),0);
-  const unrealisedGL=totalReturn-realisedGL-totalIncome+totalExpenses;
-  const totalReturnPct=netCapital>0?(totalReturn/netCapital*100):0;
+  // v3.41.0 — mutual funds only: no member subscriptions/redemptions, NAV, cash, stocks or fund-level income
+  const mf=getMutualFundIds();
+  const mfRows=getFundSnapshotRows().filter(r=>mf.has(r.assetId));
+  const mfPurch=purchases.filter(p=>mf.has(p.assetId));
+  const mfSales=sales.filter(x=>mf.has(x.assetId));
+  const mfIncome=incomeRecords.filter(r=>mf.has(r.assetId));
+  const subscribed=mfRows.reduce((t,r)=>t+r.costBasis,0);
+  const proceeds=mfSales.reduce((t,x)=>t+(x.proceeds||0),0);
+  const costRedeemed=mfSales.reduce((t,x)=>t+(x.costBasis||0),0);
+  const stillInvested=mfRows.reduce((t,r)=>t+r.remainingCost,0);
+  const currentValue=mfRows.reduce((t,r)=>t+r.currentValue,0);
+  const unrealisedGL=mfRows.reduce((t,r)=>t+r.unrealizedGL,0);
+  const realisedGL=proceeds-costRedeemed;
+  const income=mfIncome.reduce((t,r)=>t+(r.amount||0),0);
+  const fees=mfPurch.reduce((t,p)=>t+(p.fee||0),0);
+  const totalReturn=realisedGL+unrealisedGL+income;
+  const netReturn=totalReturn-fees;
+  const pct=subscribed>0?(totalReturn/subscribed*100):0;
+  const netPct=subscribed>0?(netReturn/subscribed*100):0;
+  const anyEst=mfRows.some(r=>!r.hasMarketValue);
   const gc=n=>n>=0?'#3b6d11':'#a32d2d';
-  const gs=n=>n>=0?'+':'-'; // v3.37.2 — negatives now show a minus sign, not just red
-  snap.innerHTML=`
+  const gs=n=>n>=0?'+':'-';
+  if(!mfRows.length){snap.innerHTML='<div class="empty">Record mutual fund subscriptions, redemptions and income to see the P&amp;L.</div>';}
+  else snap.innerHTML=`
     <div class="metrics">
-      <div class="metric" data-tip="Every amount members have paid into the fund since launch, before any redemptions."><div class="metric-label">Total subscriptions</div><div class="metric-val">${fmt(totalDeposits)}</div><div class="metric-sub">Gross member deposits</div></div>
-      <div class="metric" data-tip="Every amount paid back out to members when they redeemed units."><div class="metric-label">Total redemptions</div><div class="metric-val" style="color:#a32d2d">${fmt(totalWithdrawals)}</div><div class="metric-sub">Gross member withdrawals</div></div>
-      <div class="metric" data-tip="Subscriptions minus redemptions: the members&rsquo; money still in the fund, at what they paid."><div class="metric-label">Net capital</div><div class="metric-val" style="color:#0c447c">${fmt(netCapital)}</div><div class="metric-sub">Subscriptions minus redemptions</div></div>
-      <div class="metric" data-tip="Uninvested cash per the accounting ledger &mdash; Cash and Cash Equivalents plus all its sub-accounts."><div class="metric-label">Cash available</div><div class="metric-val" style="color:${cashAvail<-0.005?'#a32d2d':''}">${cashAvail<0?'-':''}${fmt(Math.abs(cashAvail))}</div><div class="metric-sub">Cash &amp; equivalents per ledger</div></div>
+      <div class="metric" data-tip="Everything the fund has paid into mutual funds (Mutual Funds &rarr; Subscriptions), at cost, before any redemptions."><div class="metric-label">Total subscribed</div><div class="metric-val">${fmt(subscribed)}</div><div class="metric-sub">${mfPurch.length} subscription${mfPurch.length!==1?'s':''}</div></div>
+      <div class="metric" data-tip="Cash the fund has received back from mutual funds when it redeemed (Mutual Funds &rarr; Redemptions)."><div class="metric-label">Redemption proceeds</div><div class="metric-val">${fmt(proceeds)}</div><div class="metric-sub">${mfSales.length} redemption${mfSales.length!==1?'s':''}</div></div>
+      <div class="metric" data-tip="The part of the subscribed cost that left with those redemptions (the cost basis recorded on each redemption)."><div class="metric-label">Cost of units redeemed</div><div class="metric-val">${fmt(costRedeemed)}</div><div class="metric-sub">Cost basis of redemptions</div></div>
+      <div class="metric" data-tip="Total subscribed minus the cost of units redeemed: the money still invested in mutual funds, at cost."><div class="metric-label">Cost still invested</div><div class="metric-val" style="color:#0c447c">${fmt(stillInvested)}</div><div class="metric-sub">Subscribed minus cost redeemed</div></div>
     </div>
     <div class="metrics">
-      <div class="metric" data-tip="The sum of every mutual fund subscription the fund has made, at cost. A gross figure: amounts later redeemed are not deducted."><div class="metric-label">Total invested (cost)</div><div class="metric-val">${fmt(totalPurchases)}</div><div class="metric-sub">All purchase amounts</div></div>
-      <div class="metric" data-tip="Net units outstanding &times; the latest NAV per unit &mdash; what all members&rsquo; units are worth today."><div class="metric-label">Fund value at NAV</div><div class="metric-val" style="color:#0c447c">${fmt(fundValueAtNAV)}</div><div class="metric-sub">${fmtU(netUnits)} units × ${getCurrency()}${currentNAV.toLocaleString(undefined,{minimumFractionDigits:4,maximumFractionDigits:4})}</div></div>
-      <div class="metric" data-tip="Paper gain or loss on the investments still held: the change in their value at the latest valuation that has not yet been turned into cash by a redemption or paid as income."><div class="metric-label">Unrealised gain / loss</div><div class="metric-val" style="color:${gc(unrealisedGL)}">${gs(unrealisedGL)}${fmt(Math.abs(unrealisedGL))}</div><div class="metric-sub">On investments still held</div></div>
+      <div class="metric" data-tip="What the mutual funds still held are worth at the latest portfolio valuation. A fund not priced in that valuation is counted at the cost still invested."><div class="metric-label">Current value</div><div class="metric-val" style="color:#0c447c">${fmt(currentValue)}</div><div class="metric-sub">${anyEst?'Latest valuation (some at cost)':'Latest valuation'}</div></div>
+      <div class="metric" data-tip="Current value minus the cost still invested: the paper gain or loss on mutual fund holdings. It becomes real only when they are redeemed."><div class="metric-label">Unrealised gain / loss</div><div class="metric-val" style="color:${gc(unrealisedGL)}">${gs(unrealisedGL)}${fmt(Math.abs(unrealisedGL))}</div><div class="metric-sub">On holdings still invested</div></div>
+      <div class="metric" data-tip="Redemption proceeds minus the cost of units redeemed: the gain or loss locked in."><div class="metric-label">Realised gain / loss</div><div class="metric-val" style="color:${gc(realisedGL)}">${gs(realisedGL)}${fmt(Math.abs(realisedGL))}</div><div class="metric-sub">From redemptions</div></div>
+      <div class="metric" data-tip="Dividends, interest and other income paid by the mutual funds themselves (Mutual Funds &rarr; Income). Fund-level income such as bank interest is excluded."><div class="metric-label">Income received</div><div class="metric-val" style="color:#3b6d11">${fmt(income)}</div><div class="metric-sub">From mutual funds only</div></div>
     </div>
     <div class="metrics">
-      <div class="metric" data-tip="Profit or loss locked in when the fund redeemed investments: proceeds received minus the cost of the part redeemed."><div class="metric-label">Realised gain / loss</div><div class="metric-val" style="color:${gc(realisedGL)}">${gs(realisedGL)}${fmt(Math.abs(realisedGL))}</div><div class="metric-sub">From ${sales.length} sale${sales.length!==1?'s':''}</div></div>
-      <div class="metric" data-tip="Dividends, interest and other income paid to the fund by its investments."><div class="metric-label">Total income received</div><div class="metric-val" style="color:#3b6d11">${fmt(totalIncome)}</div><div class="metric-sub">Dividends, interest &amp; other</div></div>
-      <div class="metric" data-tip="Broker fees and any other expenses the fund has booked (Expense accounts in the ledger). They reduce the total return."><div class="metric-label">Fees &amp; expenses</div><div class="metric-val" style="color:${totalExpenses>0.005?'#a32d2d':''}">${totalExpenses>0.005?'-':''}${fmt(Math.abs(totalExpenses))}</div><div class="metric-sub">Per the ledger</div></div>
-      <div class="metric" style="background:#eaf3de" data-tip="The members&rsquo; overall gain: fund value at NAV minus net capital. It equals realised gain/loss + income received &minus; fees &amp; expenses + unrealised gain/loss, and is shown as a percentage of net capital."><div class="metric-label">Total return</div><div class="metric-val" style="color:${gc(totalReturn)};font-size:20px">${gs(totalReturn)}${fmt(Math.abs(totalReturn))}</div><div class="metric-sub" style="color:${gc(totalReturn)}">${totalReturnPct>=0?'+':''}${totalReturnPct.toFixed(2)}% on net capital</div></div>
+      <div class="metric" data-tip="Broker transfer fees paid on mutual fund subscriptions. They are booked as an expense, not added to cost, so they reduce the return."><div class="metric-label">Transfer fees</div><div class="metric-val" style="color:${fees>0.005?'#a32d2d':''}">${fees>0.005?'-':''}${fmt(fees)}</div><div class="metric-sub">On subscriptions</div></div>
+      <div class="metric" style="background:#eaf3de" data-tip="Realised + unrealised gain/loss + income received from mutual funds, as a percentage of total subscribed. Matches the Total of the table above. The line below shows it after transfer fees."><div class="metric-label">Total return</div><div class="metric-val" style="color:${gc(totalReturn)};font-size:20px">${gs(totalReturn)}${fmt(Math.abs(totalReturn))}</div><div class="metric-sub" style="color:${gc(totalReturn)}">${pct>=0?'+':''}${pct.toFixed(2)}% on subscribed &middot; after fees ${gs(netReturn)}${fmt(Math.abs(netReturn))} (${netPct>=0?'+':''}${netPct.toFixed(2)}%)</div></div>
     </div>`;
-  // Income breakdown by asset
+  // Income by mutual fund
   const incWrap=document.getElementById('pnl-income-breakdown');
   if(incWrap){
-    if(!incomeRecords.length){incWrap.innerHTML='<div class="empty">No income recorded yet.</div>';}
+    if(!mfIncome.length){incWrap.innerHTML='<div class="empty">No mutual fund income recorded yet.</div>';}
     else{
       const byAsset={};
-      incomeRecords.forEach(r=>{
-        const k=r.assetId==='FUND'?'Fund level':r.assetId;
-        if(!byAsset[k])byAsset[k]={label:r.assetId==='FUND'?'Fund level':getAssetLabelFull(r.assetType),total:0,breakdown:{}};
-        byAsset[k].total+=r.amount;
-        byAsset[k].breakdown[r.incomeType]=(byAsset[k].breakdown[r.incomeType]||0)+r.amount;
+      mfIncome.forEach(r=>{
+        const item=portfolioItems.find(p=>p.assetId===r.assetId);
+        if(!byAsset[r.assetId])byAsset[r.assetId]={label:item&&item.description?item.description:getAssetLabelFull(r.assetType),total:0,breakdown:{}};
+        byAsset[r.assetId].total+=r.amount;
+        byAsset[r.assetId].breakdown[r.incomeType]=(byAsset[r.assetId].breakdown[r.incomeType]||0)+r.amount;
       });
-      const sorted=Object.entries(byAsset).sort((a,b)=>b[1].total-a[1].total);
       let rows='';
-      sorted.forEach(([key,a])=>{
+      Object.entries(byAsset).sort((a,b)=>b[1].total-a[1].total).forEach(([key,a])=>{
         const types=Object.entries(a.breakdown).map(([t,v])=>`<span class="tag tag-green" style="margin-right:3px">${esc(t)}: ${fmt(v)}</span>`).join('');
         rows+=`<tr><td style="font-size:11px;font-weight:600;color:#0c447c">${esc(key)}</td><td>${esc(a.label)}</td><td>${types}</td><td class="num" style="font-weight:600;color:#3b6d11">${fmt(a.total)}</td></tr>`;
       });
-      const grand=incomeRecords.reduce((s,r)=>s+r.amount,0);
       incWrap.innerHTML='<div style="overflow-x:auto"><table><thead><tr>'
-        +'<th style="width:130px">Asset ID</th><th>Label</th><th>Breakdown</th><th class="num" style="width:120px">Total</th>'
+        +'<th style="width:130px">Asset ID</th><th>Fund</th><th>Breakdown</th><th class="num" style="width:120px">Total</th>'
         +'</tr></thead><tbody>'+rows
-        +`<tr class="tfoot-row"><td colspan="3">Grand total</td><td class="num" style="color:#3b6d11">${fmt(grand)}</td></tr>`
+        +`<tr class="tfoot-row"><td colspan="3">Total</td><td class="num" style="color:#3b6d11">${fmt(income)}</td></tr>`
         +'</tbody></table></div>';
     }
   }
-  // Sales breakdown
+  // Redemptions from mutual funds
   const salWrap=document.getElementById('pnl-sales-breakdown');
   if(salWrap){
-    if(!sales.length){salWrap.innerHTML='<div class="empty">No sales recorded yet.</div>';}
+    if(!mfSales.length){salWrap.innerHTML='<div class="empty">No mutual fund redemptions recorded yet.</div>';}
     else{
       let rows='';let tC=0,tP=0,tG=0;
-      sales.forEach(s=>{
-        tC+=s.costBasis;tP+=s.proceeds;tG+=s.gl;
-        const col=s.gl>=0?'#3b6d11':'#a32d2d';
-        rows+=`<tr><td>${esc(s.date)}</td><td style="font-size:11px;font-weight:600;color:#0c447c">${esc(s.assetId)}</td>
-          <td class="num">${fmt(s.costBasis)}</td><td class="num">${fmt(s.proceeds)}</td>
-          <td class="num" style="font-weight:600;color:${col}">${s.gl>=0?'+':''}${fmt(s.gl)}</td>
-          <td style="font-size:12px">${esc(s.note||'—')}</td></tr>`;
+      [...mfSales].sort((a,b)=>(a.date||'').localeCompare(b.date||'')).forEach(x=>{
+        const gl=(x.proceeds||0)-(x.costBasis||0);
+        tC+=x.costBasis||0;tP+=x.proceeds||0;tG+=gl;
+        const c=gl>=0?'#3b6d11':'#a32d2d';
+        rows+=`<tr><td>${esc(x.date)}</td><td style="font-size:11px;font-weight:600;color:#0c447c">${esc(x.assetId)}</td>
+          <td class="num">${fmt(x.costBasis||0)}</td><td class="num">${fmt(x.proceeds||0)}</td>
+          <td class="num" style="font-weight:600;color:${c}">${gl>=0?'+':''}${fmt(gl)}</td>
+          <td style="font-size:12px">${esc(x.note||'—')}</td></tr>`;
       });
       const gc2=tG>=0?'#3b6d11':'#a32d2d';
       salWrap.innerHTML='<div style="overflow-x:auto"><table><thead><tr>'
-        +'<th style="width:90px">Date</th><th>Asset ID</th><th class="num">Cost</th>'
+        +'<th style="width:90px">Date</th><th>Asset ID</th><th class="num">Cost redeemed</th>'
         +'<th class="num">Proceeds</th><th class="num" style="width:110px">Gain/Loss</th><th>Note</th>'
         +'</tr></thead><tbody>'+rows
         +`<tr class="tfoot-row"><td colspan="2">Total</td><td class="num">${fmt(tC)}</td><td class="num">${fmt(tP)}</td><td class="num" style="color:${gc2}">${tG>=0?'+':''}${fmt(tG)}</td><td></td></tr>`
