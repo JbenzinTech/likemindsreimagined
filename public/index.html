@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Like Minds Reimagined — v3.39.1</title>
+<title>Like Minds Reimagined — v3.40.1</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
@@ -194,6 +194,15 @@ tr:last-child td{border-bottom:none}
 #overview-ov-fund [data-tip]::after{content:attr(data-tip);position:absolute;top:calc(100% - 4px);left:10px;width:max-content;max-width:270px;background:#1a1a18;color:#fff;font-size:12.5px;font-weight:400;line-height:1.5;text-transform:none;letter-spacing:0;white-space:normal;text-align:left;padding:9px 12px;border-radius:8px;box-shadow:0 4px 14px rgba(0,0,0,.28);opacity:0;visibility:hidden;pointer-events:none;transition:opacity .15s ease .25s;z-index:30}
 #overview-ov-fund [data-tip]:hover::after{opacity:1;visibility:visible}
 #overview-ov-fund .metrics>.metric:last-child::after{left:auto;right:10px}
+/* v3.40.0 — the same hover explanations anywhere in the app (Snapshot, Stocks, Members Report, Member portal) */
+[data-tip]{position:relative}
+[data-tip]:hover{z-index:20}
+[data-tip]::after{content:attr(data-tip);position:absolute;top:calc(100% - 4px);left:10px;width:max-content;max-width:270px;background:#1a1a18;color:#fff;font-size:12.5px;font-weight:400;line-height:1.5;text-transform:none;letter-spacing:0;white-space:normal;text-align:left;padding:9px 12px;border-radius:8px;box-shadow:0 4px 14px rgba(0,0,0,.28);opacity:0;visibility:hidden;pointer-events:none;transition:opacity .15s ease .25s;z-index:30}
+[data-tip]:hover::after{opacity:1;visibility:visible}
+.metrics>.metric:last-child[data-tip]::after{left:auto;right:10px}
+.card-title[data-tip]{cursor:help}
+.tip-i{color:#b4b2a9;font-weight:400;margin-left:5px;font-size:12px}
+.fs-explain{font-size:12px;color:#5f5e5a;line-height:1.6;margin:-4px 0 12px}
 /* a card's own explanation follows the cursor, and steps aside while a tile or a chart is hovered */
 #overview-ov-fund .ov-tip-card::after{top:var(--ty,42px);left:clamp(8px,var(--tx,16px),calc(100% - 290px));max-width:280px}
 #overview-ov-fund .ov-tip-card:has(.metric:hover)::after,#overview-ov-fund .ov-tip-card:has(canvas:hover)::after,#overview-ov-fund .ov-tip-card:has(select:hover)::after{opacity:0;visibility:hidden}
@@ -292,6 +301,7 @@ tr:last-child td{border-bottom:none}
     <div id="portal-own-wrap">
       <div id="member-portal-content"></div>
       <div id="portal-projection-mount"></div>
+      <div id="portal-kyc-mount"></div>
     </div>
     <div id="portal-fund-pages" class="portal-ro" style="display:none"></div>
   </div>
@@ -640,7 +650,7 @@ tr:last-child td{border-bottom:none}
         <strong>How access is enforced:</strong> every role built here is a <em>staff</em> role. In the database, staff can read and save fund data;
         the ticks below decide which screens they see and use. Two things are enforced in the database itself: <strong>KYC</strong> (only Admins and roles with Members — KYC ticked)
         and <strong>roles / Member portal access</strong> (only Admins can change them).<br>
-        <strong>Member</strong> is different: a view-only portal that can read only that member's own statement record — never other members' details or KYC. Fund pages switched on in the Member portal access card are a read-only copy with members shown by ID.
+        <strong>Member</strong> is different: a view-only portal that can read only that member's own statement record — never other members' details or KYC. Fund pages switched on in the Member portal access card are a read-only copy with members shown by ID. With <em>My KYC</em> on, a Member can also view (not edit) their own KYC.
         It isn't part of this grid; use the Member portal access card below to choose what Members see, or delete it from the Roles table and create your own "Member" role here (which then becomes a staff role).
       </div>
       <div class="row">
@@ -670,7 +680,7 @@ tr:last-child td{border-bottom:none}
       <div style="font-size:12px;color:#5f5e5a;line-height:1.6;margin-bottom:10px">
         <strong>Admin</strong> — full control, including Settings, Chart of Accounts, and user management.<br>
         <strong>Manager</strong> — day-to-day operations (deposits, withdrawals, portfolio, valuation, accounting). No access to Settings or KYC.<br>
-        <strong>Member</strong> — view-only access to their own account statement, plus any read-only fund pages switched on in Settings → Roles → Member portal access (other members shown only by ID). Never sees KYC.<br>
+        <strong>Member</strong> — view-only access to their own account statement, plus any read-only fund pages switched on in Settings → Roles → Member portal access (other members shown only by ID). Can view &mdash; never edit &mdash; their own KYC when <em>My KYC</em> is on; never sees anyone else's.<br>
         <strong>Custom roles</strong> — the sections ticked in Settings → Users &amp; Roles → Roles.
       </div>
       <div style="display:none" id="user-mode-toggle">
@@ -1325,7 +1335,7 @@ tr:last-child td{border-bottom:none}
     <div id="pnl-fund-breakdown"><div class="empty">No investments registered yet — add one via Portfolio → Mutual Funds → Register.</div></div>
   </div>
   <div class="card">
-    <div class="card-title">Fund P&amp;L summary</div>
+    <div class="card-title" data-tip="Fund-wide profit and loss since launch: the money members put in and took out, what the fund invested, what the members' units are worth now, and the gains and income earned along the way.">Fund P&amp;L summary<span class="tip-i">&#9432;</span></div>
     <div style="font-size:12px;color:#5f5e5a;margin-bottom:12px;line-height:1.6">Complete fund economics: capital deployed, income earned, gains realised, distributions paid, and current unrealised position.</div>
     <div id="pnl-snapshot"><div class="empty">Record purchases, sales, and income to see the P&amp;L.</div></div>
   </div>
@@ -1384,7 +1394,7 @@ tr:last-child td{border-bottom:none}
 <!-- STOCKS: HOLDINGS -->
 <div id="panel-stocks-holdings" class="panel p-profit">
   <div class="card">
-    <div class="card-title">Stocks summary</div>
+    <div class="card-title" data-tip="The fund's listed shares at a glance, valued at the current prices in the Holdings register below (live NGX prices for companies tracked in Settings &rarr; NGX Market).">Stocks summary<span class="tip-i">&#9432;</span></div>
     <div class="metrics" id="stk-metrics"></div>
   </div>
   <div class="card">
@@ -1593,10 +1603,10 @@ tr:last-child td{border-bottom:none}
       </div>
     </div>
   </div>
-  <div class="card"><div class="card-title">Statement of Financial Position <span style="font-weight:400;text-transform:none;letter-spacing:0;color:#888780;font-size:11px">— as of period end</span></div><div id="fs-sofp"></div></div>
-  <div class="card"><div class="card-title">Statement of Comprehensive Income <span style="font-weight:400;text-transform:none;letter-spacing:0;color:#888780;font-size:11px">— for the period</span></div><div id="fs-soci"></div></div>
-  <div class="card"><div class="card-title">Statement of Cash Flows <span style="font-weight:400;text-transform:none;letter-spacing:0;color:#888780;font-size:11px">— for the period</span></div><div id="fs-cashflow"></div></div>
-  <div class="card"><div class="card-title">Statement of Changes in Net Assets <span style="font-weight:400;text-transform:none;letter-spacing:0;color:#888780;font-size:11px">— for the period</span></div><div id="fs-changes"></div></div>
+  <div class="card"><div class="card-title">Statement of Financial Position <span style="font-weight:400;text-transform:none;letter-spacing:0;color:#888780;font-size:11px">— as of period end</span></div><div class="fs-explain">What the fund owns and owes on the period-end date. Assets are cash and investments at their latest fair value; liabilities are amounts the fund owes. What is left &mdash; net assets &mdash; belongs to the members: the capital they put in plus the gains or losses built up since launch.</div><div id="fs-sofp"></div></div>
+  <div class="card"><div class="card-title">Statement of Comprehensive Income <span style="font-weight:400;text-transform:none;letter-spacing:0;color:#888780;font-size:11px">— for the period</span></div><div class="fs-explain">How the investments performed during the period: income and gains (dividends, interest, realised gains and changes in fair value at each valuation) less expenses such as broker and management fees. The bottom line is the change in net assets from investing, before member subscriptions or redemptions.</div><div id="fs-soci"></div></div>
+  <div class="card"><div class="card-title">Statement of Cash Flows <span style="font-weight:400;text-transform:none;letter-spacing:0;color:#888780;font-size:11px">— for the period</span></div><div class="fs-explain">Where the fund&rsquo;s cash came from and where it went during the period: operating (income received, fees paid), investing (buying and redeeming investments) and financing (member subscriptions and redemptions). It links opening cash to closing cash.</div><div id="fs-cashflow"></div></div>
+  <div class="card"><div class="card-title">Statement of Changes in Net Assets <span style="font-weight:400;text-transform:none;letter-spacing:0;color:#888780;font-size:11px">— for the period</span></div><div class="fs-explain">How the members&rsquo; total stake moved during the period: net assets at the start, plus subscriptions, minus redemptions, plus or minus the result from operations, gives net assets at the end.</div><div id="fs-changes"></div></div>
 </div>
 
 <!-- CORPORATE ACTIONS -->
@@ -1699,7 +1709,7 @@ tr:last-child td{border-bottom:none}
 <!-- MEMBERS -->
 <div id="panel-members" class="panel p-members">
   <div class="card">
-    <div class="card-title">Select member</div>
+    <div class="card-title" data-tip="Pick a member to open their account: what they hold, how it is performing and every transaction. Hover a figure for what it means.">Select member<span class="tip-i">&#9432;</span></div>
     <div id="member-pills"><div class="empty">No members yet — add deposits first.</div></div>
   </div>
   <div id="member-detail"></div>
@@ -2171,6 +2181,11 @@ function fundSubDoc(col,id){ if(!fbDb||!fundId) return null; return fbDb.collect
 function fundKycDoc(){ return fundSubDoc('kyc','records'); }
 function fundAccessDoc(){ return fundSubDoc('config','access'); }
 function fundStatementDoc(uid){ return fundSubDoc('statements',uid); }
+/* v3.40.0 — funds/{fundId}/kycSelf/{uid}: one portal member's OWN KYC record, published by KYC-permitted
+   staff. Rules: readable by that member and KYC roles only; written by KYC roles only. */
+function fundKycSelfDoc(uid){ return fundSubDoc('kycSelf',uid); }
+let lastPublishedKycSelf={}; // uid -> JSON published this session ('-' = deleted)
+let portalKyc; // Member portal: undefined = not fetched yet, null = none on file, else {record,updatedAt}
 function canUseKYC(){ return !!currentUser&&!portalStatement&&hasPermission('kyc'); }
 function refreshKYCViews(){
   try{
@@ -2189,6 +2204,71 @@ async function loadKYCFromCloud(){
     kycLoaded=true;
   }catch(e){ console.warn('KYC load failed:',e.message); }
   refreshKYCViews();
+  if(kycLoaded) publishMemberKycSelf(); // v3.40.0
+}
+/* v3.40.0 — copy each portal member's own KYC record to kycSelf/{uid} (or remove it when the member has
+   no record or 'My KYC' is switched off for them). Only runs for users holding the KYC permission, once
+   KYC has loaded. Writes only what changed since the last publish in this session. */
+async function publishMemberKycSelf(){
+  if(!canUseKYC()||!kycLoaded||!fundId||!fbDb) return;
+  try{
+    await ensureSignedIn();
+    loadUsers();
+    const batch=fbDb.batch();let writes=0;
+    users.filter(u=>u.uid&&u.linkedMemberName&&isPortalRole(u.role)).forEach(u=>{
+      const rec=kycData[u.linkedMemberName];
+      const on=u.active!==false&&getPortalAccessFor(u.uid).kyc&&rec&&rec.savedAt;
+      const json=on?JSON.stringify(rec):'-';
+      if(lastPublishedKycSelf[u.uid]===json) return;
+      if(on) batch.set(fundKycSelfDoc(u.uid),{uid:u.uid,memberName:u.linkedMemberName,record:rec,updatedAt:Date.now(),updatedBy:currentUser.uid});
+      else batch.delete(fundKycSelfDoc(u.uid));
+      lastPublishedKycSelf[u.uid]=json;writes++;
+    });
+    if(writes) await batch.commit();
+  }catch(e){ lastPublishedKycSelf={}; console.warn('Member KYC publish failed:',e.message); }
+}
+async function deleteMemberKycSelf(uid){
+  const ref=fundKycSelfDoc(uid); if(!ref||!canUseKYC()) return;
+  try{ await ensureSignedIn(); await ref.delete(); lastPublishedKycSelf[uid]='-'; }catch(e){ console.warn('Member KYC delete failed:',e.message); }
+}
+/* Member portal: read this member's own KYC copy (memory only — never written to the device). */
+async function fetchOwnKyc(uid){
+  const ref=fundKycSelfDoc(uid); if(!ref) return null;
+  try{ await ensureSignedIn(); const snap=await ref.get(); return snap.exists?snap.data():null; }
+  catch(e){ console.warn('Own KYC fetch failed:',e.message); return null; }
+}
+function renderPortalKyc(){
+  const mount=document.getElementById('portal-kyc-mount');if(!mount)return;
+  if(!getMemberPortalSettings().kyc||!currentUser){mount.innerHTML='';return;}
+  if(portalKyc===undefined){
+    mount.innerHTML='<div class="card"><div class="card-title">My KYC</div><div class="empty">Loading&hellip;</div></div>';
+    fetchOwnKyc(currentUser.uid).then(d=>{portalKyc=d;renderPortalKyc();});
+    return;
+  }
+  const r=(portalKyc&&portalKyc.record)||null;
+  const row=(label,val)=>`<tr><td style="color:#5f5e5a;width:40%;padding:6px;border-bottom:0.5px solid #e8e6df;font-size:12px">${esc(label)}</td><td style="font-weight:500;padding:6px;border-bottom:0.5px solid #e8e6df;font-size:12px">${val?esc(val):'<span style="color:#b4b2a9">&mdash;</span>'}</td></tr>`;
+  const acct=(num,i)=>num?`<span class="pk-acct" data-full="${esc(num)}" data-masked="${esc(maskAccount(num))}">${esc(maskAccount(num))}</span> <button type="button" style="padding:1px 7px;font-size:10px" onclick="togglePortalAcct(this)">Show</button>`:'<span style="color:#b4b2a9">&mdash;</span>';
+  const arow=(label,num)=>`<tr><td style="color:#5f5e5a;width:40%;padding:6px;border-bottom:0.5px solid #e8e6df;font-size:12px">${esc(label)}</td><td style="font-weight:500;padding:6px;border-bottom:0.5px solid #e8e6df;font-size:12px">${acct(num)}</td></tr>`;
+  let h=`<div class="card"><div class="card-title" data-tip="Your next-of-kin and bank details exactly as the fund holds them. You can view them here but not change them.">My KYC <span style="font-weight:400;text-transform:none;letter-spacing:0;color:#888780;font-size:11px">&mdash; view only</span>${'<span class="tip-i">&#9432;</span>'}</div>`;
+  if(!r){
+    h+='<div class="empty">No KYC details are on file for you yet. Please send them to the fund administrator.</div></div>';
+    mount.innerHTML=h;return;
+  }
+  const nok=r.nok||{},b1=r.bank1||{},b2=r.bank2||{};
+  h+=`<div class="chart-grid-2" style="gap:12px">
+    <div><div style="font-size:11px;font-weight:600;color:#888780;text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px">Next of kin</div>
+      <table style="width:100%"><tbody>${row('Full name',nok.name)}${row('Relationship',nok.relationship)}${row('Date of birth',nok.dob)}${row('Gender',nok.gender)}${row('Phone',nok.phone1)}${row('Alternative phone',nok.phone2)}${row('Email',nok.email)}${row('Address',[nok.address,nok.city,nok.state].filter(Boolean).join(', '))}</tbody></table></div>
+    <div><div style="font-size:11px;font-weight:600;color:#888780;text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px">Bank accounts</div>
+      <table style="width:100%"><tbody>${row('Primary — account name',b1.name)}${arow('Primary — account number',b1.number)}${row('Primary — bank',b1.bank)}
+      ${(b2.name||b2.number||b2.bank)?row('Second — account name',b2.name)+arow('Second — account number',b2.number)+row('Second — bank',b2.bank):''}</tbody></table></div>
+  </div>
+  <div class="hint">${r.savedAt?'Last updated by the fund: '+esc(r.savedAt)+'. ':''}If anything is wrong or has changed, contact the fund administrator to update it.</div></div>`;
+  mount.innerHTML=h;
+}
+function togglePortalAcct(btn){
+  const sp=btn.previousElementSibling;if(!sp)return;
+  const showing=sp.textContent===sp.dataset.full;
+  sp.textContent=showing?sp.dataset.masked:sp.dataset.full;btn.textContent=showing?'Show':'Hide';
 }
 async function saveKYCRecordCloud(name,rec){
   const ref=fundKycDoc();
@@ -2197,12 +2277,13 @@ async function saveKYCRecordCloud(name,rec){
     await ensureSignedIn();
     await ref.set({byMember:{[name]:rec},updatedAt:Date.now(),updatedBy:currentUser?currentUser.uid:null},{merge:true});
     setStatus('KYC saved to the cloud — '+new Date().toLocaleTimeString());
+    publishMemberKycSelf(); // v3.40.0
     return true;
   }catch(e){ alert('The KYC record could not be saved to the cloud: '+e.message); return false; }
 }
 async function deleteKYCRecordCloud(name){
   const ref=fundKycDoc(); if(!ref||!canUseKYC()) return;
-  try{ await ensureSignedIn(); await ref.update(new firebase.firestore.FieldPath('byMember',name),firebase.firestore.FieldValue.delete()); }
+  try{ await ensureSignedIn(); await ref.update(new firebase.firestore.FieldPath('byMember',name),firebase.firestore.FieldValue.delete()); publishMemberKycSelf(); }
   catch(e){ console.warn('KYC delete failed:',e.message); }
 }
 async function restoreKYCFromBackup(backupKyc){
@@ -2325,6 +2406,7 @@ async function publishMemberStatements(){
       if(lastPublishedAccess!==json){ batch.set(fundAccessDoc(),{kycRoles,updatedAt:Date.now(),updatedBy:currentUser.uid}); lastPublishedAccess=json; writes++; }
     }
     if(writes) await batch.commit();
+    publishMemberKycSelf(); // v3.40.0 — portal access or user links may have changed
   }catch(e){
     lastPublishedStatements={};lastPublishedAccess=null; // retry everything next time
     console.warn('Statement publish failed:',e.message);
@@ -3220,6 +3302,7 @@ function renderPortalOwn(){
   renderMemberDetail(name,'member-portal-content');
   if(getMemberPortalSettings().projection) mountProjection('portal-projection-mount',name);
   else{ const pm=document.getElementById('portal-projection-mount'); if(pm)pm.innerHTML=''; }
+  renderPortalKyc(); // v3.40.0
 }
 
 /* ══════════════════════════════════════════
@@ -3445,6 +3528,7 @@ async function removeUser(uid){
   saveUsers();
   await deleteUserProfileCloud(uid);
   deleteMemberStatement(uid); // v3.36.0 — their portal statement goes too
+  deleteMemberKycSelf(uid); // v3.40.0 — and their own-KYC copy
   renderUsersTable();
 }
 /* v3.32.3 — legacy (pre-v3.27.0, no Firebase uid) accounts had no controls at all. They only exist in
@@ -3625,6 +3709,7 @@ const MEMBER_PORTAL_DEFS=[
   {key:'transactions',label:'Transaction history',desc:'Their own subscriptions, redemptions and transfers with running units'},
   {key:'projection',label:'Investment projection',desc:'The growth projection calculator and explanation'},
   {key:'pdf',label:'PDF & email statement',desc:'Buttons to download or email their statement'},
+  {key:'kyc',label:'My KYC (view only)',desc:'Their own next-of-kin and bank details as held by the fund &mdash; read only, no editing'}, // v3.40.0
   // v3.38.0 — read-only fund pages (off unless switched on for all Members or granted per member)
   {key:'fundSummary',fund:true,short:'Fund Summary',label:'Overview — Fund Summary',desc:'Full page: fund snapshot, NAV performance, charts (members shown by ID), performance &amp; outlook'},
   {key:'allocation',fund:true,short:'Allocation',label:'Portfolio — Allocation',desc:'Target vs actual allocation table only'},
@@ -7511,12 +7596,12 @@ function toggleMemberSection(id){
   });
 }
 
-function collapsibleCard(id,title,content,startOpen){
+function collapsibleCard(id,title,content,startOpen,tip){
   const arrow=startOpen?'▼':'▶';
   const display=startOpen?'block':'none';
   return `<div class="card">
     <div style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none" onclick="toggleMemberSection('${id}')">
-      <div class="card-title" style="margin-bottom:0">${esc(title)}</div>
+      <div class="card-title" style="margin-bottom:0"${tip?` data-tip="${tip}"`:''}>${esc(title)}${tip?'<span class="tip-i">&#9432;</span>':''}</div>
       <span id="${id}-arrow" style="font-size:11px;color:#888780">${arrow}</span>
     </div>
     <div id="${id}-body" style="display:${display};margin-top:10px">${content}</div>
@@ -7546,7 +7631,7 @@ function renderMemberDetail(name,targetId){
   const anyLotUnderwater=subBreakdown.some(l=>l.lotUnderwater);
 
   // Card 1: header + key NAV metrics
-  let h=`<div class="card">
+  let h=`<div class="card ov-tip-card" data-tip="This member&rsquo;s account at the latest valuation: what they hold, what it is worth, what they paid in and their paper gain or loss.">
     <div class="member-header">
       <div class="avatar">${esc(initials(name))}</div>
       <div style="flex:1">
@@ -7557,10 +7642,10 @@ function renderMemberDetail(name,targetId){
       <button class="btn-pdf" style="background:#e6f1fb;color:#0c447c;border-color:#b5d4f4" onclick="emailMemberStatement('${jsArg(name)}')">&#9993; Email statement</button>`:''}
     </div>
     <div class="metrics" style="${show('summary')?'':'display:none'}">
-      <div class="metric"><div class="metric-label">Net units held</div><div class="metric-val" style="color:#0c447c">${fmtU(s.myNetUnits)}</div><div class="metric-sub">${(s.share*100).toFixed(2)}% of fund</div></div>
-      <div class="metric"><div class="metric-label">Current value at NAV</div><div class="metric-val" style="color:#0c447c">${fmt(s.currentValue)}</div><div class="metric-sub">${fmtU(s.myNetUnits)} × ${getCurrency()}${currentNAV.toLocaleString(undefined,{minimumFractionDigits:4,maximumFractionDigits:4})}</div></div>
-      <div class="metric"><div class="metric-label">Net invested (cost basis)</div><div class="metric-val">${fmt(s.myAmount)}</div><div class="metric-sub">Subscriptions minus redemptions</div></div>
-      <div class="metric"><div class="metric-label">Unrealised gain / loss</div><div class="metric-val" style="color:${glColor}">${glSign}${fmt(Math.abs(s.unrealisedGL))}</div><div class="metric-sub" style="color:${glColor}">${glSign}${s.unrealisedPct.toFixed(2)}% on cost</div></div>
+      <div class="metric" data-tip="Units this member owns after subscriptions, redemptions and transfers, and their share of all units in issue."><div class="metric-label">Net units held</div><div class="metric-val" style="color:#0c447c">${fmtU(s.myNetUnits)}</div><div class="metric-sub">${(s.share*100).toFixed(2)}% of fund</div></div>
+      <div class="metric" data-tip="Net units &times; the latest NAV per unit &mdash; what this member&rsquo;s holding is worth today."><div class="metric-label">Current value at NAV</div><div class="metric-val" style="color:#0c447c">${fmt(s.currentValue)}</div><div class="metric-sub">${fmtU(s.myNetUnits)} × ${getCurrency()}${currentNAV.toLocaleString(undefined,{minimumFractionDigits:4,maximumFractionDigits:4})}</div></div>
+      <div class="metric" data-tip="Everything this member has paid in, minus what they have taken out in redemptions."><div class="metric-label">Net invested (cost basis)</div><div class="metric-val">${fmt(s.myAmount)}</div><div class="metric-sub">Subscriptions minus redemptions</div></div>
+      <div class="metric" data-tip="Current value minus net invested: the paper profit or loss, and the % on cost. It becomes real only when units are redeemed."><div class="metric-label">Unrealised gain / loss</div><div class="metric-val" style="color:${glColor}">${glSign}${fmt(Math.abs(s.unrealisedGL))}</div><div class="metric-sub" style="color:${glColor}">${glSign}${s.unrealisedPct.toFixed(2)}% on cost</div></div>
     </div>
   </div>`;
 
@@ -7588,16 +7673,16 @@ function renderMemberDetail(name,targetId){
 
   // Card 2: performance collapsible
   const perfContent=`<div class="metrics">
-    <div class="metric"><div class="metric-label">NAV return on cost</div><div class="metric-val" style="color:${glColor}">${glSign}${s.unrealisedPct.toFixed(2)}%</div><div class="metric-sub">(Current value − cost) ÷ cost</div></div>
-    <div class="metric"><div class="metric-label">Average subscription NAV</div><div class="metric-val">${s.myDeps.length?fmt(s.myDeps.reduce((a,d)=>a+d.nav,0)/s.myDeps.length):'—'}</div><div class="metric-sub">Avg price paid per unit</div></div>
-    <div class="metric"><div class="metric-label">Current NAV</div><div class="metric-val" style="color:#0c447c">${fmt(currentNAV)}</div><div class="metric-sub">Latest valuation</div></div>
-    <div class="metric"><div class="metric-label">Break-even NAV</div><div class="metric-val" style="color:${isUnderwater?'#a32d2d':'#3b6d11'}">${s.myNetUnits>0?fmt(s.myAmount/s.myNetUnits):'—'}</div><div class="metric-sub">${isUnderwater?'NAV needed to recover cost':'Already above break-even'}</div></div>
+    <div class="metric" data-tip="(Current value &minus; net invested) &divide; net invested."><div class="metric-label">NAV return on cost</div><div class="metric-val" style="color:${glColor}">${glSign}${s.unrealisedPct.toFixed(2)}%</div><div class="metric-sub">(Current value − cost) ÷ cost</div></div>
+    <div class="metric" data-tip="Simple average of the unit price (NAV) paid on each subscription, not weighted by amount."><div class="metric-label">Average subscription NAV</div><div class="metric-val">${s.myDeps.length?fmt(s.myDeps.reduce((a,d)=>a+d.nav,0)/s.myDeps.length):'—'}</div><div class="metric-sub">Avg price paid per unit</div></div>
+    <div class="metric" data-tip="The unit price at the latest valuation."><div class="metric-label">Current NAV</div><div class="metric-val" style="color:#0c447c">${fmt(currentNAV)}</div><div class="metric-sub">Latest valuation</div></div>
+    <div class="metric" data-tip="Net invested &divide; net units: the unit price at which this member&rsquo;s holding is worth exactly what they put in."><div class="metric-label">Break-even NAV</div><div class="metric-val" style="color:${isUnderwater?'#a32d2d':'#3b6d11'}">${s.myNetUnits>0?fmt(s.myAmount/s.myNetUnits):'—'}</div><div class="metric-sub">${isUnderwater?'NAV needed to recover cost':'Already above break-even'}</div></div>
   </div>
   <div class="metrics">
-    <div class="metric"><div class="metric-label">Average subscription</div><div class="metric-val">${fmt(s.avgDeposit)}</div></div>
-    <div class="metric"><div class="metric-label">Largest subscription</div><div class="metric-val">${fmt(s.largestDeposit)}</div></div>
-    <div class="metric"><div class="metric-label">Total subscriptions</div><div class="metric-val">${s.myDeps.length}</div></div>
-    <div class="metric"><div class="metric-label">Total redemptions</div><div class="metric-val">${s.myWdws.length}</div></div>
+    <div class="metric" data-tip="Average amount paid in per subscription."><div class="metric-label">Average subscription</div><div class="metric-val">${fmt(s.avgDeposit)}</div></div>
+    <div class="metric" data-tip="The single largest amount paid in."><div class="metric-label">Largest subscription</div><div class="metric-val">${fmt(s.largestDeposit)}</div></div>
+    <div class="metric" data-tip="How many subscriptions (payments in) are recorded."><div class="metric-label">Total subscriptions</div><div class="metric-val">${s.myDeps.length}</div></div>
+    <div class="metric" data-tip="How many redemptions (payments out) are recorded."><div class="metric-label">Total redemptions</div><div class="metric-val">${s.myWdws.length}</div></div>
   </div>
   ${anyLotUnderwater?`<div style="margin-top:10px">
     <div style="font-size:11px;font-weight:600;color:#888780;text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px">Subscription lots — gain/loss at current NAV</div>
@@ -7628,7 +7713,7 @@ function renderMemberDetail(name,targetId){
     }).join('')}
     </tbody></table></div>
   </div>`:''}`;
-  if(show('performance')) h+=collapsibleCard('mem-sec-perf','Performance metrics',perfContent,true);
+  if(show('performance')) h+=collapsibleCard('mem-sec-perf','Performance metrics',perfContent,true,'How this member&rsquo;s investment is doing against the unit prices they paid, and their subscription pattern. Lots below their entry price are listed when any exist.');
 
   // Card 3: transaction history collapsible
     // Running units must accumulate in strict chronological order — computed once below
@@ -7667,7 +7752,7 @@ function renderMemberDetail(name,targetId){
       +'<th class="num">Units</th><th class="num">Running units</th>'
       +'</tr></thead><tbody>'+orderedTxnRows.join('')+'</tbody></table></div>';
   }
-  if(show('transactions')) h+=collapsibleCard('mem-sec-contrib','Transaction history',txnContent,false);
+  if(show('transactions')) h+=collapsibleCard('mem-sec-contrib','Transaction history',txnContent,false,'Every subscription, redemption and unit transfer for this member, with the unit price used and the running unit balance.');
 
   document.getElementById(targetId||'member-detail').innerHTML=h;
 }
@@ -9037,10 +9122,10 @@ function renderStockHoldings(){
   const totalDiv=stockDividends.reduce((s,d)=>s+(d.received||0),0);
   if(metricsEl){
     metricsEl.innerHTML=`
-      <div class="metric"><div class="metric-label">Market value</div><div class="metric-val" style="color:#0c447c">${fmt(totalMV)}</div></div>
-      <div class="metric"><div class="metric-label">Total invested</div><div class="metric-val">${fmt(totalCost)}</div></div>
-      <div class="metric"><div class="metric-label">Unrealised P&amp;L</div><div class="metric-val" style="color:${gain>=0?'#3b6d11':'#a32d2d'}">${gain>=0?'+':''}${fmt(gain)}</div><div class="metric-sub">${totalCost>0?((gain/totalCost)*100).toFixed(2)+'%':''}</div></div>
-      <div class="metric"><div class="metric-label">Dividends received</div><div class="metric-val" style="color:#633806">${fmt(totalDiv)}</div></div>`;
+      <div class="metric" data-tip="Shares held &times; current price, added up across all holdings. Uses the live NGX price where a company is tracked, otherwise the price entered by hand."><div class="metric-label">Market value</div><div class="metric-val" style="color:#0c447c">${fmt(totalMV)}</div></div>
+      <div class="metric" data-tip="What the shares still held cost, including broker charges (average cost from Stocks &rarr; Transactions; the cost of shares sold is taken out)."><div class="metric-label">Total invested</div><div class="metric-val">${fmt(totalCost)}</div></div>
+      <div class="metric" data-tip="Market value minus total invested: paper profit or loss on the shares still held, with the % return on cost."><div class="metric-label">Unrealised P&amp;L</div><div class="metric-val" style="color:${gain>=0?'#3b6d11':'#a32d2d'}">${gain>=0?'+':''}${fmt(gain)}</div><div class="metric-sub">${totalCost>0?((gain/totalCost)*100).toFixed(2)+'%':''}</div></div>
+      <div class="metric" data-tip="Net dividends actually received after withholding tax, from Stocks &rarr; Dividends."><div class="metric-label">Dividends received</div><div class="metric-val" style="color:#633806">${fmt(totalDiv)}</div></div>`;
   }
   const wrap=document.getElementById('stkh-table-wrap');if(!wrap)return;
   if(!stockHoldings.length){wrap.innerHTML='<div class="empty">No stock holdings yet — record a transaction below, or add a holding&rsquo;s metadata here first.</div>';return;}
@@ -10515,27 +10600,31 @@ function renderPnL(){
   const wdwUnits=withdrawals.reduce((s,w)=>s+(w.units||0),0);
   const netUnits=Math.max(depUnits-wdwUnits,0);
   const fundValueAtNAV=netUnits*currentNAV;
-  const unrealisedGL=fundValueAtNAV-netCapital;
-  const totalReturn=realisedGL+totalIncome+unrealisedGL;
+  // v3.40.1 — fund value at NAV already contains realised gains, income and fees, so the members' gain
+  // (fund value − net capital) IS the total return. Unrealised is what remains after the other parts.
+  const totalReturn=fundValueAtNAV-netCapital;
+  const totalExpenses=getAllAccounts().filter(a=>a.type==='Expense').reduce((s,a)=>s+getAccountBalance(a.code,null),0);
+  const unrealisedGL=totalReturn-realisedGL-totalIncome+totalExpenses;
   const totalReturnPct=netCapital>0?(totalReturn/netCapital*100):0;
   const gc=n=>n>=0?'#3b6d11':'#a32d2d';
   const gs=n=>n>=0?'+':'-'; // v3.37.2 — negatives now show a minus sign, not just red
   snap.innerHTML=`
     <div class="metrics">
-      <div class="metric"><div class="metric-label">Total subscriptions</div><div class="metric-val">${fmt(totalDeposits)}</div><div class="metric-sub">Gross member deposits</div></div>
-      <div class="metric"><div class="metric-label">Total redemptions</div><div class="metric-val" style="color:#a32d2d">${fmt(totalWithdrawals)}</div><div class="metric-sub">Gross member withdrawals</div></div>
-      <div class="metric"><div class="metric-label">Net capital</div><div class="metric-val" style="color:#0c447c">${fmt(netCapital)}</div><div class="metric-sub">Subscriptions minus redemptions</div></div>
-      <div class="metric"><div class="metric-label">Cash available</div><div class="metric-val" style="color:${cashAvail<-0.005?'#a32d2d':''}">${cashAvail<0?'-':''}${fmt(Math.abs(cashAvail))}</div><div class="metric-sub">Cash &amp; equivalents per ledger</div></div>
+      <div class="metric" data-tip="Every amount members have paid into the fund since launch, before any redemptions."><div class="metric-label">Total subscriptions</div><div class="metric-val">${fmt(totalDeposits)}</div><div class="metric-sub">Gross member deposits</div></div>
+      <div class="metric" data-tip="Every amount paid back out to members when they redeemed units."><div class="metric-label">Total redemptions</div><div class="metric-val" style="color:#a32d2d">${fmt(totalWithdrawals)}</div><div class="metric-sub">Gross member withdrawals</div></div>
+      <div class="metric" data-tip="Subscriptions minus redemptions: the members&rsquo; money still in the fund, at what they paid."><div class="metric-label">Net capital</div><div class="metric-val" style="color:#0c447c">${fmt(netCapital)}</div><div class="metric-sub">Subscriptions minus redemptions</div></div>
+      <div class="metric" data-tip="Uninvested cash per the accounting ledger &mdash; Cash and Cash Equivalents plus all its sub-accounts."><div class="metric-label">Cash available</div><div class="metric-val" style="color:${cashAvail<-0.005?'#a32d2d':''}">${cashAvail<0?'-':''}${fmt(Math.abs(cashAvail))}</div><div class="metric-sub">Cash &amp; equivalents per ledger</div></div>
     </div>
     <div class="metrics">
-      <div class="metric"><div class="metric-label">Total invested (cost)</div><div class="metric-val">${fmt(totalPurchases)}</div><div class="metric-sub">All purchase amounts</div></div>
-      <div class="metric"><div class="metric-label">Fund value at NAV</div><div class="metric-val" style="color:#0c447c">${fmt(fundValueAtNAV)}</div><div class="metric-sub">${fmtU(netUnits)} units × ${getCurrency()}${currentNAV.toLocaleString(undefined,{minimumFractionDigits:4,maximumFractionDigits:4})}</div></div>
-      <div class="metric"><div class="metric-label">Unrealised gain / loss</div><div class="metric-val" style="color:${gc(unrealisedGL)}">${gs(unrealisedGL)}${fmt(Math.abs(unrealisedGL))}</div><div class="metric-sub">Fund value minus net capital</div></div>
+      <div class="metric" data-tip="The sum of every mutual fund subscription the fund has made, at cost. A gross figure: amounts later redeemed are not deducted."><div class="metric-label">Total invested (cost)</div><div class="metric-val">${fmt(totalPurchases)}</div><div class="metric-sub">All purchase amounts</div></div>
+      <div class="metric" data-tip="Net units outstanding &times; the latest NAV per unit &mdash; what all members&rsquo; units are worth today."><div class="metric-label">Fund value at NAV</div><div class="metric-val" style="color:#0c447c">${fmt(fundValueAtNAV)}</div><div class="metric-sub">${fmtU(netUnits)} units × ${getCurrency()}${currentNAV.toLocaleString(undefined,{minimumFractionDigits:4,maximumFractionDigits:4})}</div></div>
+      <div class="metric" data-tip="Paper gain or loss on the investments still held: the change in their value at the latest valuation that has not yet been turned into cash by a redemption or paid as income."><div class="metric-label">Unrealised gain / loss</div><div class="metric-val" style="color:${gc(unrealisedGL)}">${gs(unrealisedGL)}${fmt(Math.abs(unrealisedGL))}</div><div class="metric-sub">On investments still held</div></div>
     </div>
     <div class="metrics">
-      <div class="metric"><div class="metric-label">Realised gain / loss</div><div class="metric-val" style="color:${gc(realisedGL)}">${gs(realisedGL)}${fmt(Math.abs(realisedGL))}</div><div class="metric-sub">From ${sales.length} sale${sales.length!==1?'s':''}</div></div>
-      <div class="metric"><div class="metric-label">Total income received</div><div class="metric-val" style="color:#3b6d11">${fmt(totalIncome)}</div><div class="metric-sub">Dividends, interest &amp; other</div></div>
-      <div class="metric" style="background:#eaf3de"><div class="metric-label">Total return</div><div class="metric-val" style="color:${gc(totalReturn)};font-size:20px">${gs(totalReturn)}${fmt(Math.abs(totalReturn))}</div><div class="metric-sub" style="color:${gc(totalReturn)}">${totalReturnPct>=0?'+':''}${totalReturnPct.toFixed(2)}% on net capital</div></div>
+      <div class="metric" data-tip="Profit or loss locked in when the fund redeemed investments: proceeds received minus the cost of the part redeemed."><div class="metric-label">Realised gain / loss</div><div class="metric-val" style="color:${gc(realisedGL)}">${gs(realisedGL)}${fmt(Math.abs(realisedGL))}</div><div class="metric-sub">From ${sales.length} sale${sales.length!==1?'s':''}</div></div>
+      <div class="metric" data-tip="Dividends, interest and other income paid to the fund by its investments."><div class="metric-label">Total income received</div><div class="metric-val" style="color:#3b6d11">${fmt(totalIncome)}</div><div class="metric-sub">Dividends, interest &amp; other</div></div>
+      <div class="metric" data-tip="Broker fees and any other expenses the fund has booked (Expense accounts in the ledger). They reduce the total return."><div class="metric-label">Fees &amp; expenses</div><div class="metric-val" style="color:${totalExpenses>0.005?'#a32d2d':''}">${totalExpenses>0.005?'-':''}${fmt(Math.abs(totalExpenses))}</div><div class="metric-sub">Per the ledger</div></div>
+      <div class="metric" style="background:#eaf3de" data-tip="The members&rsquo; overall gain: fund value at NAV minus net capital. It equals realised gain/loss + income received &minus; fees &amp; expenses + unrealised gain/loss, and is shown as a percentage of net capital."><div class="metric-label">Total return</div><div class="metric-val" style="color:${gc(totalReturn)};font-size:20px">${gs(totalReturn)}${fmt(Math.abs(totalReturn))}</div><div class="metric-sub" style="color:${gc(totalReturn)}">${totalReturnPct>=0?'+':''}${totalReturnPct.toFixed(2)}% on net capital</div></div>
     </div>`;
   // Income breakdown by asset
   const incWrap=document.getElementById('pnl-income-breakdown');
@@ -11047,9 +11136,8 @@ function resetProjectionSettings(){
    this only tells a card where the cursor is so its explanation appears beside it.
 ══════════════════════════════════════════ */
 (function(){
-  const root=document.getElementById('overview-ov-fund');
-  if(!root) return;
-  root.addEventListener('mousemove',function(e){
+  // v3.40.0 — listen on the whole page so cards outside Overview (and moved into the Member portal) work too
+  document.addEventListener('mousemove',function(e){
     const card=e.target.closest&&e.target.closest('.ov-tip-card');
     if(!card) return;
     const r=card.getBoundingClientRect();

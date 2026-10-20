@@ -191,6 +191,15 @@ service cloud.firestore {
         allow read, write: if canUseKyc(fundId);
       }
 
+      // ── v3.40.0 funds/{fundId}/kycSelf/{memberUid} — a portal Member's OWN KYC copy ──
+      // Published by KYC-permitted staff from kyc/records. The Member can read only their
+      // own doc and can never write it (view-only); other staff without KYC cannot read it.
+      match /kycSelf/{memberUid} {
+        allow read: if canUseKyc(fundId) ||
+                       (isActiveFundMember(fundId) && request.auth.uid == memberUid);
+        allow write: if canUseKyc(fundId);
+      }
+
       // ── v3.36.0 funds/{fundId}/statements/{memberUid} — Member portal data ──
       match /statements/{memberUid} {
         allow read: if isFundStaff(fundId) ||
