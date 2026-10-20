@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Like Minds Reimagined — v3.38.0</title>
+<title>Like Minds Reimagined — v3.39.0</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
@@ -483,6 +483,9 @@ tr:last-child td{border-bottom:none}
       <button class="tab-btn sub-btn" id="nav-projection-settings" onclick="switchSettingsTab('projection-settings',this)">
         <span class="tab-icon" style="font-size:12px">&#128200;</span><span class="tab-label">Projection Assumptions</span>
       </button>
+      <button class="tab-btn sub-btn" id="nav-ngx-market" onclick="switchSettingsTab('ngx-market',this)">
+        <span class="tab-icon" style="font-size:12px">&#128185;</span><span class="tab-label">NGX Market</span>
+      </button>
       <button class="tab-btn sub-btn" id="nav-users-roles-group" onclick="toggleUsersRolesSubmenu(this)">
         <span class="tab-icon" style="font-size:12px">&#128101;</span><span class="tab-label">Users &amp; Roles</span>
         <span class="tab-arrow" id="users-roles-submenu-arrow" style="margin-left:auto;font-size:9px;transition:transform .2s">&#9660;</span>
@@ -714,6 +717,34 @@ tr:last-child td{border-bottom:none}
       <div style="font-size:12px;color:#5f5e5a;line-height:1.6;margin-bottom:12px">Expected annual return per asset class. Members' projections blend these by the fund's allocation. These are illustrative planning inputs, not forecasts or guarantees &mdash; set them conservatively.</div>
       <div id="pjs-wrap"></div>
       <div style="display:flex;gap:8px;margin-top:12px"><button class="btn-primary" onclick="saveProjectionSettings()">Save assumptions</button><button onclick="resetProjectionSettings()">Reset to defaults</button></div>
+    </div>
+  </div>
+
+  <!-- Sub-panel: NGX Market (v3.39.0) -->
+  <div id="settings-ngx-market" class="settings-sub" style="display:none">
+    <div class="card">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px">
+        <div class="card-title" style="margin-bottom:0">NGX live prices &mdash; tracked companies</div>
+        <button class="btn-primary" id="ngx-refresh-btn" onclick="ngxRefresh({manual:true})">&#8635; Refresh now</button>
+      </div>
+      <div style="font-size:12px;color:#5f5e5a;line-height:1.6;margin-bottom:10px">Only the companies listed here are pulled &mdash; never the full NGX list. Prices refresh automatically when staff log in (if older than 20 minutes; NGX updates every 20 minutes, Mon&ndash;Fri 09:00&ndash;16:00 WAT) and feed the <strong>Current price</strong> in Portfolio &rarr; Stocks &rarr; Holdings for every row with <em>Feed holdings</em> ticked.</div>
+      <div id="ngx-status" style="font-size:12px;margin-bottom:10px"></div>
+      <div id="ngx-table-wrap"><div class="empty">No companies tracked yet.</div></div>
+      <div class="row" style="margin-top:12px">
+        <div class="f1"><label>Add a company</label><input id="ngx-add-ticker" list="stock-ticker-list" placeholder="e.g. GTCO" style="text-transform:uppercase"/></div>
+        <div style="flex:0;align-self:flex-end"><button onclick="ngxAddFromInput()">+ Track</button></div>
+      </div>
+      <div id="ngx-untracked" style="margin-top:10px"></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Data providers</div>
+      <div style="font-size:12px;color:#5f5e5a;line-height:1.6;margin-bottom:12px">The primary provider is tried first; the backup is used only for tickers the primary could not return. Keys are kept in the fund's protected cloud settings (Admins change them; staff can use them) &mdash; never in the app file, GitHub or JSON backups. Staging and production keep separate keys. Alpha Vantage is not offered: it does not cover NGX-listed stocks.</div>
+      <div id="ngx-providers-wrap"></div>
+      <div id="ngx-provider-actions" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+        <button class="btn-primary" onclick="saveNgxConfig()">Save providers</button>
+        <button onclick="ngxTestProviders()">Test connection</button>
+      </div>
+      <div class="hint" id="ngx-provider-msg"></div>
     </div>
   </div>
 
@@ -1377,7 +1408,7 @@ tr:last-child td{border-bottom:none}
       <div class="f1"><label>Current price (&#8358;)</label><input id="stkh-price" type="number" min="0" step="0.01" placeholder="0.00"/></div>
       <div style="flex:0;align-self:flex-end"><button id="stkh-submit-btn" class="btn-primary" onclick="saveStockHolding()">Save &#8599;</button></div>
     </div>
-    <div class="hint">Share count is calculated automatically from the Transactions tab — this form only sets a ticker's company name, sector, and current market price. Click a row below to edit it.</div>
+    <div class="hint">Share count is calculated automatically from the Transactions tab — this form only sets a ticker's company name, sector, and current market price. Click a row below to edit it. Prices marked <span style="color:#3b6d11;font-weight:600">&#9679; LIVE</span> come from Settings &rarr; NGX Market and are replaced on the next refresh; untick <em>Feed holdings</em> there to keep a manual price.</div>
     <div style="margin-top:8px"><button onclick="syncStockHoldingsFromTxns();save();renderStockHoldings();" style="font-size:12px;padding:5px 12px">&#8635; Sync from transactions</button></div>
   </div>
   <div class="card">
@@ -1396,7 +1427,7 @@ tr:last-child td{border-bottom:none}
     <input type="hidden" id="stx-edit-id"/>
     <div class="row">
       <div class="f1"><label>Date</label><input id="stx-date" type="date"/></div>
-      <div class="f1"><label>Stock</label><input id="stx-stock" list="stock-ticker-list" placeholder="e.g. GTCO" style="text-transform:uppercase" oninput="onStockTickerInput(this.value,'stkh')"/></div>
+      <div class="f1"><label>Stock</label><input id="stx-stock" list="stock-ticker-list" placeholder="e.g. GTCO" style="text-transform:uppercase" oninput="onStockTickerInput(this.value,'stkh')" onchange="onStxTickerSelected(this.value)"/></div>
       <div class="f1"><label>Asset ID <span style="color:#888780;font-size:11px">(optional)</span></label>
         <select id="stx-asset-id" onchange="onStockAssetChange(this.value)"><option value="">— None —</option></select>
       </div>
@@ -1414,6 +1445,7 @@ tr:last-child td{border-bottom:none}
         <button id="stx-update-btn" class="btn-primary" onclick="saveStockTxnEdit()" style="display:none;background:#1d6f42;border-color:#1d6f42">&#10003; Update</button>
       </div>
     </div>
+    <div id="stx-ngx-prompt" style="display:none"></div>
     <div class="hint">Buy adds units at cost (price &#215; units + charges, posted to Investments at Fair Value). Sell reduces units using average cost to compute realised gain/loss, posted to account 4200. Settlement account is the asset account debited/credited on the cash side (defaults to Cash and Cash Equivalents). <strong>Asset ID</strong> is optional and links this transaction to a Portfolio → Register entry — tag transactions this way so their cost basis is picked up by that Register item's Cost figure under Portfolio → Valuation → Investment breakdown (and in the NAV History detail view).</div>
   </div>
   <div class="card">
@@ -1857,7 +1889,8 @@ let sales=[]; // [{date, assetId, assetType, broker, proceeds, costBasis, gl, no
 let incomeRecords=[]; // [{date, assetId, assetType, incomeType, amount, note, id}]
 let journalEntries=[]; // [{id, date, description, sourceType, sourceId, lines:[{account,debit,credit}], auto}]
 let corporateActions=[]; // [{id, date, assetId, actionType, details, note}]
-let stockHoldings=[]; // {ticker, company, sector, shares, price}
+let stockHoldings=[]; // {ticker, company, sector, shares, price, priceAt?, priceSrc?} — v3.39.0 adds priceAt/priceSrc ('NGX' when fed live)
+let ngxWatchlist=null; // v3.39.0 — null = never set up (seeded from holdings once); [{ticker,name,sector,price,prevClose,change,changePct,volume,lastUpdated,fetchedAt,source,status,error,autoFeed,addedFrom,addedAt,flag}]
 let stockTxns=[]; // {id, date, stock, type:'buy'|'sell', units, price, charges, totalAmt, broker, note}
 let stockDividends=[]; // {id, stock, year, dps, qualDate, payDate, whtPct, whtAmt, gross, received, status}
 let fundLaunchNav=null; // TRUE immutable launch NAV, locked in once the first valuation is recorded — never overwritten by current-NAV updates
@@ -1983,7 +2016,7 @@ function gatherSyncPayload(){
     deposits,withdrawals,portfolioItems,purchases,brokerRegistry,assetTypeRegistry,
     navValuations,profitRounds,membersRegistry,transfers,sales,incomeRecords, // v3.36.0: kycData no longer rides on this doc — see funds/{fundId}/kyc/records
     journalEntries,corporateActions,customAccounts,coaOverrides,fundLaunchNav,
-    allocationTargets,allocationHistory,stockHoldings,stockTxns,stockDividends,
+    allocationTargets,allocationHistory,stockHoldings,stockTxns,stockDividends,ngxWatchlist:ngxWatchlist||null,
     settings:{fundName:document.getElementById('fund-name').value,currency:getCurrency(),
       nav:document.getElementById('init-nav').value,startDate:document.getElementById('fund-start').value},
     projectionAssumptions:projectionAssumptions||null,customRoles,memberPortal:memberPortalSettings||null,memberRoleRemoved,
@@ -2008,6 +2041,7 @@ function writeCloudDataToLocalStorage(d){
     coaOverrides:d.coaOverrides||{},fundLaunchNav:(d.fundLaunchNav!=null?d.fundLaunchNav:null),
     allocationTargets:d.allocationTargets||[],allocationHistory:d.allocationHistory||[],
     stockHoldings:d.stockHoldings||[],stockTxns:d.stockTxns||[],stockDividends:d.stockDividends||[],projectionAssumptions:d.projectionAssumptions||null,
+    ngxWatchlist:Array.isArray(d.ngxWatchlist)?d.ngxWatchlist:null,
     _v27:true,settings:d.settings||{}
   };
   localStorage.setItem(LS_KEY,JSON.stringify(fundData));
@@ -2566,6 +2600,7 @@ const PERMISSION_DEFS=[
     {key:'settings.coa',label:'Chart of Accounts (Accounting)'},
     {key:'settings.dataStorage',label:'Data Storage'},
     {key:'settings.projection',label:'Projection Assumptions'},
+    {key:'settings.ngxMarket',label:'NGX Market (live prices)'},
   ]},
   {key:'users',label:'Users & Roles',desc:'Settings → Users & Roles: users, roles and Member portal access — grants control over others\' access. Changes to roles and portal access are saved only for Admins (enforced in the database).',subs:null},
 ];
@@ -2623,7 +2658,7 @@ const TAB_PERMISSION_MAP={
   'profit':'portfolio.valuation','port-register':'portfolio.register','port-purchases':'portfolio.purchases','port-sales':'portfolio.sales','port-income':'portfolio.income','port-pnl':'portfolio.pnl','port-allocation':'portfolio.allocation','stocks-holdings':'portfolio.stocksHoldings','stocks-transactions':'portfolio.stocksTransactions','stocks-dividends':'portfolio.stocksDividends','fixed-income':'portfolio.fixedIncome',
   'journal':'accounting.journal','ledger':'accounting.ledger','trial-balance':'accounting.trialBalance','statements':'accounting.statements','corp-actions':'accounting.corpActions',
   'members':'members.list','membership':'members.registration','projection':'members.projection','projection-settings':'settings.projection',
-  'fund-identity':'settings.fundIdentity','brokers':'settings.brokers','asset-types':'settings.assetTypes','coa':'settings.coa','data-storage':'settings.dataStorage',
+  'fund-identity':'settings.fundIdentity','brokers':'settings.brokers','asset-types':'settings.assetTypes','coa':'settings.coa','data-storage':'settings.dataStorage','ngx-market':'settings.ngxMarket',
 };
 const TAB_BUTTON_ID_MAP={
   'ov-fund':'nav-ov-fund','ov-members':'nav-ov-members',
@@ -2631,7 +2666,7 @@ const TAB_BUTTON_ID_MAP={
   'profit':'nav-profit','port-register':'nav-port-register','port-purchases':'nav-port-purchases','port-sales':'nav-port-sales','port-income':'nav-port-income','port-pnl':'nav-port-pnl','port-allocation':'nav-port-allocation','stocks-holdings':'nav-stocks-holdings','stocks-transactions':'nav-stocks-transactions','stocks-dividends':'nav-stocks-dividends','fixed-income':'nav-fixed-income',
   'journal':'nav-journal','ledger':'nav-ledger','trial-balance':'nav-trial-balance','statements':'nav-statements','corp-actions':'nav-corp-actions',
   'members':'nav-members-list','membership':'nav-membership','projection':'nav-projection','projection-settings':'nav-projection-settings',
-  'fund-identity':'nav-fund-identity','brokers':'nav-brokers','asset-types':'nav-asset-types','coa':'nav-coa','data-storage':'nav-data-storage',
+  'fund-identity':'nav-fund-identity','brokers':'nav-brokers','asset-types':'nav-asset-types','coa':'nav-coa','data-storage':'nav-data-storage','ngx-market':'nav-ngx-market',
 };
 
 async function hashPassword(pw){
@@ -3077,6 +3112,7 @@ function bootApp(){
     await maybeMigrateLegacyKyc();
     loadKYCFromCloud();
     publishMemberStatements();
+    ngxAutoRefreshOnLogin(); // v3.39.0
   })();
 }
 
@@ -4225,7 +4261,7 @@ function save(){
   const data={deposits,withdrawals,portfolioItems,purchases,brokerRegistry,assetTypeRegistry,
     navValuations,profitRounds,membersRegistry,transfers,sales,incomeRecords, // v3.36.0: KYC is cloud-only (funds/{fundId}/kyc/records), never cached in inv_club_v2
     journalEntries,corporateActions,customAccounts,coaOverrides,fundLaunchNav,allocationTargets,allocationHistory,
-    stockHoldings,stockTxns,stockDividends,projectionAssumptions,_v27:true,
+    stockHoldings,stockTxns,stockDividends,projectionAssumptions,ngxWatchlist,_v27:true,
     settings:{fundName:document.getElementById('fund-name').value,currency:getCurrency(),
     nav:document.getElementById('init-nav').value,startDate:document.getElementById('fund-start').value}};
   try{localStorage.setItem(LS_KEY,JSON.stringify(data));setStatus('Saved to device — '+new Date().toLocaleTimeString());scheduleAutoPush();}
@@ -4252,6 +4288,7 @@ function load(){
       stockTxns=d.stockTxns||[];
       stockDividends=d.stockDividends||[];
       projectionAssumptions=d.projectionAssumptions||null;
+      ngxWatchlist=Array.isArray(d.ngxWatchlist)?d.ngxWatchlist:null;
       if(!d._v27){
         brokerRegistry=[];assetTypeRegistry=[];
         const fixed={deposits,withdrawals,portfolioItems,purchases,brokerRegistry,assetTypeRegistry,
@@ -4309,7 +4346,7 @@ function clearAllData(){
   localStorage.removeItem(LS_KEY);
   deposits=[];withdrawals=[];portfolioItems=[];purchases=[];brokerRegistry=[];assetTypeRegistry=[];navValuations=[];profitRounds=[];kycData={};membersRegistry=[];
   transfers=[];sales=[];incomeRecords=[];journalEntries=[];corporateActions=[];customAccounts=[];coaOverrides={};allocationTargets=[];allocationHistory=[];
-  stockHoldings=[];stockTxns=[];stockDividends=[];projectionAssumptions=null;
+  stockHoldings=[];stockTxns=[];stockDividends=[];projectionAssumptions=null;ngxWatchlist=null;
   fundLaunchNav=1000;
   selectedMember=null;selectedKYCMember=null;selectedOwnershipMember=null;window._ownershipSummary=[];window._msSummary=[];
   document.getElementById('fund-name').value='Investment Manager';
@@ -4322,7 +4359,7 @@ function clearAllData(){
 function exportJSON(){
   // v3.36.0 — backups no longer contain KYC (next-of-kin and bank details). KYC lives only in
   // funds/{fundId}/kyc/records, readable by Admin and roles holding the KYC permission.
-  const data={deposits,withdrawals,portfolioItems,purchases,brokerRegistry,assetTypeRegistry,navValuations,profitRounds,membersRegistry,transfers,sales,incomeRecords,journalEntries,corporateActions,customAccounts,coaOverrides,fundLaunchNav,allocationTargets,allocationHistory,stockHoldings,stockTxns,stockDividends,projectionAssumptions,settings:{fundName:document.getElementById('fund-name').value,currency:getCurrency(),nav:document.getElementById('init-nav').value,startDate:document.getElementById('fund-start').value},exportedAt:new Date().toISOString(),lmrEnv:LMR_ENV};
+  const data={deposits,withdrawals,portfolioItems,purchases,brokerRegistry,assetTypeRegistry,navValuations,profitRounds,membersRegistry,transfers,sales,incomeRecords,journalEntries,corporateActions,customAccounts,coaOverrides,fundLaunchNav,allocationTargets,allocationHistory,stockHoldings,stockTxns,stockDividends,projectionAssumptions,ngxWatchlist,settings:{fundName:document.getElementById('fund-name').value,currency:getCurrency(),nav:document.getElementById('init-nav').value,startDate:document.getElementById('fund-start').value},exportedAt:new Date().toISOString(),lmrEnv:LMR_ENV};
   const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);
   const fn=(document.getElementById('fund-name').value||'investment_club').replace(/[^a-z0-9]/gi,'_').toLowerCase();
@@ -4376,6 +4413,7 @@ function importJSON(){
       stockTxns=d.stockTxns||[];
       stockDividends=d.stockDividends||[];
       projectionAssumptions=d.projectionAssumptions||null;
+      ngxWatchlist=Array.isArray(d.ngxWatchlist)?d.ngxWatchlist:null;
 
       if(d.settings){
         if(d.settings.fundName){document.getElementById('fund-name').value=d.settings.fundName;document.getElementById('fund-name-header').textContent=d.settings.fundName;}
@@ -8074,7 +8112,7 @@ function showKYCTab(idx,total){
 /* ── nav/tab wiring ── */
 
 const TAB_LABELS={overview:'Overview',deposits:'Deposits',profit:'Valuation',members:'Members — Report',membership:'Members — Members Register',projection:'Members — Projection',settings:'Settings',kyc:'Members — KYC'};
-const SETTINGS_SUB_LABELS={'fund-identity':'Fund Identity','brokers':'Brokers','asset-types':'Asset Types','data-storage':'Data Storage','projection-settings':'Projection Assumptions','roles':'Roles','users':'Users & Access'};
+const SETTINGS_SUB_LABELS={'fund-identity':'Fund Identity','brokers':'Brokers','asset-types':'Asset Types','data-storage':'Data Storage','projection-settings':'Projection Assumptions','ngx-market':'NGX Market','roles':'Roles','users':'Users & Access'};
 
 /* ══════════════════════════════════════════
    JOURNAL — manual entry + full journal view
@@ -8955,8 +8993,12 @@ function saveStockHolding(){
   const sector=document.getElementById('stkh-sector').value;
   const price=parseFloat(document.getElementById('stkh-price').value)||0;
   const idx=stockHoldings.findIndex(h=>h.ticker===ticker);
-  if(idx>-1){ stockHoldings[idx]={...stockHoldings[idx],company,sector,price}; }
-  else{ stockHoldings.push({ticker,company,sector,price,shares:computeStockCostBasis(ticker).units}); }
+  if(idx>-1){
+    const prev=stockHoldings[idx];
+    const priceChanged=Math.abs((prev.price||0)-price)>1e-9;
+    stockHoldings[idx]={...prev,company,sector,price,...(priceChanged?{priceSrc:'manual',priceAt:new Date().toISOString()}:{})};
+  }
+  else{ stockHoldings.push({ticker,company,sector,price,priceSrc:'manual',priceAt:new Date().toISOString(),shares:computeStockCostBasis(ticker).units}); }
   cancelStockHoldingEdit();
   save();renderStockHoldings();syncStockDropdowns();
 }
@@ -9018,7 +9060,7 @@ function renderStockHoldings(){
       <td>${hd.sector?`<span class="tag ${STOCK_SECTOR_TAG[hd.sector]||'tag-amber'}" style="font-size:10px">${esc(hd.sector)}</span>`:'—'}</td>
       <td class="num">${fmtU(hd.shares||0)}</td>
       <td class="num">${dca?fmt(dca):'—'}</td>
-      <td class="num">${fmt(hd.price||0)}</td>
+      <td class="num">${fmt(hd.price||0)}${hd.priceSrc==='NGX'?`<div style="font-size:10px;color:#3b6d11;font-weight:600" title="Live NGX price${hd.priceAt?' — '+esc(new Date(hd.priceAt).toLocaleString()):''}">&#9679; LIVE${hd.priceAt?' '+esc(ngxShortTime(hd.priceAt)):''}</div>`:''}</td>
       <td class="num">${fmt(cost)}</td>
       <td class="num" style="font-weight:600">${fmt(mv)}</td>
       <td class="num" style="color:${chgCol}">${cost>0?(mv>=cost?'+':'')+((mv-cost)/cost*100).toFixed(1)+'%':'—'}</td>
@@ -9406,7 +9448,7 @@ function toggleSettingsMenu(btn){
     sub.style.display='block';if(arr)arr.style.transform='rotate(180deg)';btn.classList.add('active');
     const activeSub=document.querySelector('.sub-btn.active');
     if(!activeSub){
-      const settingsSubIds=['fund-identity','brokers','asset-types','coa','data-storage'];
+      const settingsSubIds=['fund-identity','brokers','asset-types','coa','data-storage','projection-settings','ngx-market'];
       const firstSettingsId=settingsSubIds.find(sid=>hasPermission(TAB_PERMISSION_MAP[sid]));
       const firstId=firstSettingsId||(hasPermission('users')?'users':null);
       const btnId=firstId==='users'?'nav-users':(firstId?TAB_BUTTON_ID_MAP[firstId]:null);
@@ -9464,6 +9506,332 @@ function switchSettingsTab(subId,btn){
   if(subId==='roles') renderRolesTable();
   if(subId==='data-storage') renderSyncPanel();
   if(subId==='projection-settings') renderProjectionSettings();
+  if(subId==='ngx-market') renderNgxMarket();
+}
+
+/* ══════════════════════════════════════════
+   NGX MARKET — LIVE PRICES (v3.39.0)
+   Pulls quotes only for tracked companies (ngxWatchlist), never the full NGX list.
+   Provider keys: funds/{fundId}/config/ngx (Admin write, staff read — existing config rules).
+   Primary NGN Market (api.ngnmarket.com/v1/companies?search=TICKER), backup Kobo Terminal
+   (koboterminal.com/api/ngxdata/prices/TICKER). Live prices feed stockHoldings[].price.
+══════════════════════════════════════════ */
+const NGX_PROVIDERS={
+  ngnmarket:{label:'NGN Market',site:'ngnmarket.com',note:'NGX-native; free plan 3,000 calls/month; prices refresh every 20 min'},
+  kobo:{label:'Kobo Terminal',site:'koboterminal.com',note:'Backup; free tier 100 calls/day; prices 30 min delayed'},
+};
+const NGX_STALE_MS=20*60*1000;      // NGX prices update every 20 min — don't call again sooner on login
+const NGX_FLAG_MOVE_PCT=15;         // flag a price that moved more than this vs the last stored price
+let ngxConfig=null;                 // {providers:{ngnmarket:{key,enabled},kobo:{key,enabled}},order:[...]} — memory only
+let ngxConfigLoaded=false;
+let ngxBusy=false;
+let ngxLastRun=null;                // {at,ok,failed,usedBackup,callsRemaining,errors:[]}
+const ngxDeclined=new Set();        // tickers declined in the Transactions prompt this session
+
+function fundNgxDoc(){ return fundSubDoc('config','ngx'); }
+function canManageNgx(){ return !!currentUser&&!portalStatement&&currentUser.role==='Admin'; }
+function canUseNgx(){ return !!currentUser&&!portalStatement&&(hasPermission('settings.ngxMarket')||hasPermission('portfolio.stocksHoldings')||hasPermission('portfolio.stocksTransactions')); }
+function ngxShortTime(iso){ try{const d=new Date(iso);return d.toLocaleDateString(undefined,{day:'2-digit',month:'short'})+' '+d.toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'});}catch(e){return '';} }
+function ngxProviderOrder(){
+  const c=ngxConfig||{};const order=(Array.isArray(c.order)&&c.order.length?c.order:['ngnmarket','kobo']).filter(k=>NGX_PROVIDERS[k]);
+  return order.filter(k=>c.providers&&c.providers[k]&&c.providers[k].key&&c.providers[k].enabled!==false);
+}
+async function loadNgxConfig(){
+  if(ngxConfigLoaded) return ngxConfig;
+  const ref=fundNgxDoc(); if(!ref) return null;
+  try{ await ensureSignedIn(); const snap=await ref.get(); ngxConfig=snap.exists?snap.data():null; ngxConfigLoaded=true; }
+  catch(e){ console.warn('NGX config load failed:',e.message); }
+  return ngxConfig;
+}
+async function saveNgxConfig(){
+  if(!canManageNgx()){alert('Only an Admin can change the NGX data providers.');return;}
+  const ref=fundNgxDoc(); if(!ref){alert('Not connected to the cloud — log in online to save provider keys.');return;}
+  const prev=(ngxConfig&&ngxConfig.providers)||{};
+  const providers={};
+  Object.keys(NGX_PROVIDERS).forEach(k=>{
+    const typed=(document.getElementById('ngx-key-'+k)||{}).value||'';
+    const key=typed.trim()||((prev[k]&&prev[k].key)||'');
+    providers[k]={key,enabled:!!(document.getElementById('ngx-en-'+k)||{}).checked};
+  });
+  const primary=(document.getElementById('ngx-primary')||{}).value||'ngnmarket';
+  const order=[primary,...Object.keys(NGX_PROVIDERS).filter(k=>k!==primary)];
+  const msg=document.getElementById('ngx-provider-msg');
+  try{
+    await ensureSignedIn();
+    await ref.set({providers,order,updatedAt:new Date().toISOString(),updatedBy:currentUser.username||''});
+    ngxConfig={providers,order};ngxConfigLoaded=true;
+    if(msg) msg.innerHTML='<span style="color:#3b6d11">Providers saved.</span>';
+    renderNgxProviders();
+  }catch(e){ if(msg) msg.innerHTML='<span style="color:#a32d2d">Save failed: '+esc(e.message)+'</span>'; }
+}
+function ngxNum(v){ const n=(v===null||v===undefined||v==='')?NaN:Number(v); return isFinite(n)?n:null; }
+async function ngxFetchJson(url,headers){
+  const ctl=new AbortController();const t=setTimeout(()=>ctl.abort(),15000);
+  try{
+    const res=await fetch(url,{headers,signal:ctl.signal});
+    let body=null;try{body=await res.json();}catch(e){}
+    if(!res.ok){
+      const m=(body&&((body.error&&body.error.message)||body.message))||('HTTP '+res.status);
+      const err=new Error(m);err.status=res.status;throw err;
+    }
+    return body;
+  }finally{clearTimeout(t);}
+}
+/* One provider, one ticker → normalised quote {price,prevClose,change,changePct,volume,name,sector,lastUpdated} */
+async function ngxQuote(provider,ticker){
+  const key=ngxConfig.providers[provider].key;
+  if(provider==='ngnmarket'){
+    const body=await ngxFetchJson('https://api.ngnmarket.com/v1/companies?search='+encodeURIComponent(ticker)+'&limit=20',{Authorization:'Bearer '+key});
+    if(body&&body.success===false) throw new Error((body.error&&body.error.message)||'Request refused');
+    if(body&&body.meta&&body.meta.calls_remaining!=null&&ngxLastRun) ngxLastRun.callsRemaining=body.meta.calls_remaining;
+    const list=(body&&body.data&&(Array.isArray(body.data.data)?body.data.data:(Array.isArray(body.data)?body.data:null)))||[];
+    const r=list.find(x=>String(x.symbol||'').toUpperCase()===ticker);
+    if(!r) throw new Error('Ticker not found');
+    const price=ngxNum(r.price!=null?r.price:(r.current_price!=null?r.current_price:r.todays_close));
+    const prev=ngxNum(r.prev_close!=null?r.prev_close:r.previous_close);
+    return {price,prevClose:prev,change:ngxNum(r.price_change),changePct:ngxNum(r.price_change_percent!=null?r.price_change_percent:r.change_percent),
+      volume:ngxNum(r.volume),name:r.name||r.company_name||'',sector:r.sector||'',lastUpdated:r.last_updated||r.updated_at||null};
+  }
+  if(provider==='kobo'){
+    const body=await ngxFetchJson('https://koboterminal.com/api/ngxdata/prices/'+encodeURIComponent(ticker),{'X-API-Key':key});
+    const r=(body&&body.data&&!Array.isArray(body.data))?body.data:(Array.isArray(body)?body.find(x=>String(x.symbol||'').toUpperCase()===ticker):body);
+    if(!r||r.error) throw new Error((r&&r.message)||'Ticker not found');
+    const price=ngxNum(r.current_price!=null?r.current_price:r.price);
+    const pct=ngxNum(r.change_percent);
+    const prev=(price!=null&&pct!=null&&pct!==-100)?price/(1+pct/100):null;
+    return {price,prevClose:prev,change:(price!=null&&prev!=null)?price-prev:null,changePct:pct,volume:ngxNum(r.volume),
+      name:r.name||'',sector:r.sector||'',lastUpdated:r.updated_at||r.last_updated||r.date||null};
+  }
+  throw new Error('Unknown provider');
+}
+/* First run: seed the watchlist from current holdings (shares > 0). After that, new tickers are
+   added only by confirmation (Transactions prompt) or the Add box on the NGX Market screen. */
+function ensureNgxWatchlist(){
+  if(Array.isArray(ngxWatchlist)) return false;
+  const now=new Date().toISOString();
+  ngxWatchlist=stockHoldings.filter(h=>(h.shares||0)>0.0001).map(h=>({ticker:h.ticker,name:h.company||stockCompanyName(h.ticker)||'',
+    sector:h.sector||stockSector(h.ticker)||'',autoFeed:true,addedFrom:'holdings',addedAt:now}));
+  return true;
+}
+function ngxFind(ticker){ return (ngxWatchlist||[]).find(w=>w.ticker===ticker); }
+function ngxAddTicker(ticker,from){
+  ticker=String(ticker||'').trim().toUpperCase(); if(!ticker) return null;
+  ensureNgxWatchlist();
+  let w=ngxFind(ticker);
+  if(!w){ w={ticker,name:stockCompanyName(ticker)||'',sector:stockSector(ticker)||'',autoFeed:true,addedFrom:from||'manual',addedAt:new Date().toISOString()}; ngxWatchlist.push(w); }
+  return w;
+}
+/* Copy live prices into Stocks → Holdings for rows with autoFeed on. Never creates holdings. */
+function ngxFeedHoldings(){
+  let n=0;
+  (ngxWatchlist||[]).forEach(w=>{
+    if(w.autoFeed===false||w.status!=='ok'||!(w.price>0)) return;
+    const h=stockHoldings.find(x=>x.ticker===w.ticker); if(!h) return;
+    const at=w.lastUpdated||w.fetchedAt;
+    if(h.price!==w.price||h.priceSrc!=='NGX'||h.priceAt!==at){ h.price=w.price;h.priceSrc='NGX';h.priceAt=at;n++; }
+    if(!h.company&&w.name) h.company=w.name;
+  });
+  return n;
+}
+/* Refresh tickers (default: all tracked). Primary provider first; backup only for tickers that failed. */
+async function ngxRefresh(opts){
+  opts=opts||{};
+  if(!canUseNgx()){ if(opts.manual) alert('Access denied — NGX Market is restricted for your role.'); return; }
+  if(ngxBusy) return;
+  const seeded=ensureNgxWatchlist();
+  await loadNgxConfig();
+  const order=ngxProviderOrder();
+  if(!order.length){
+    if(seeded) save();
+    if(opts.manual) alert(canManageNgx()?'Add an NGN Market or Kobo Terminal API key under Data providers first.':'No NGX data provider is set up yet — ask an Admin to add an API key in Settings → NGX Market.');
+    renderNgxMarket();return;
+  }
+  const tickers=(opts.tickers||(ngxWatchlist||[]).map(w=>w.ticker)).filter(t=>ngxFind(t));
+  if(!tickers.length){ if(seeded) save(); renderNgxMarket(); return; }
+  ngxBusy=true;ngxLastRun={at:new Date().toISOString(),ok:0,failed:0,usedBackup:0,callsRemaining:null,errors:[]};
+  const btn=document.getElementById('ngx-refresh-btn');if(btn){btn.disabled=true;btn.textContent='Refreshing…';}
+  try{
+    for(const t of tickers){
+      const w=ngxFind(t); let got=null,lastErr=null,src=null;
+      for(let i=0;i<order.length&&!got;i++){
+        try{ const q=await ngxQuote(order[i],t); if(q&&q.price>0){got=q;src=order[i];if(i>0)ngxLastRun.usedBackup++;} else lastErr=new Error('No price returned'); }
+        catch(e){ lastErr=e; }
+      }
+      const now=new Date().toISOString();
+      if(got){
+        const old=w.price;
+        Object.assign(w,{price:got.price,prevClose:got.prevClose,change:got.change,changePct:got.changePct,volume:got.volume,
+          lastUpdated:got.lastUpdated||now,fetchedAt:now,source:src,status:'ok',error:null});
+        if(!w.name&&got.name) w.name=got.name; if(!w.sector&&got.sector) w.sector=got.sector;
+        w.flag=(old>0&&Math.abs(got.price-old)/old*100>NGX_FLAG_MOVE_PCT)?('Moved '+((got.price-old)/old*100).toFixed(1)+'% since last refresh — check before relying on it'):null;
+        ngxLastRun.ok++;
+      }else{
+        Object.assign(w,{status:'error',error:(lastErr&&lastErr.message)||'Failed',fetchedAt:now});
+        ngxLastRun.failed++;ngxLastRun.errors.push(t+': '+((lastErr&&lastErr.message)||'Failed'));
+      }
+    }
+    const fed=ngxFeedHoldings();
+    ngxLastRun.fed=fed;
+    save();
+    try{renderStockHoldings();}catch(e){}
+    if(ngxLastRun.ok) setStatus('NGX prices updated — '+ngxLastRun.ok+' compan'+(ngxLastRun.ok===1?'y':'ies')+(ngxLastRun.failed?', '+ngxLastRun.failed+' failed':''));
+    else setStatus('NGX price refresh failed');
+  }finally{
+    ngxBusy=false;
+    if(btn){btn.disabled=false;btn.innerHTML='&#8635; Refresh now';}
+    renderNgxMarket();
+  }
+}
+/* Staff login: refresh only if the newest fetch on this fund (any device) is older than 20 minutes. */
+async function ngxAutoRefreshOnLogin(){
+  try{
+    if(!canUseNgx()) return;
+    await loadNgxConfig();
+    if(!ngxProviderOrder().length) return;
+    ensureNgxWatchlist();
+    const newest=(ngxWatchlist||[]).reduce((m,w)=>Math.max(m,w.fetchedAt?Date.parse(w.fetchedAt)||0:0),0);
+    if(Date.now()-newest<NGX_STALE_MS) return;
+    await ngxRefresh({auto:true});
+  }catch(e){ console.warn('NGX auto-refresh skipped:',e.message); }
+}
+function ngxToggleFeed(ticker,on){
+  const w=ngxFind(ticker);if(!w)return;
+  w.autoFeed=!!on;
+  if(on) ngxFeedHoldings();
+  save();renderNgxMarket();try{renderStockHoldings();}catch(e){}
+}
+function removeNgxTicker(ticker){
+  if(!canUseNgx()){alert('Access denied — NGX Market is restricted for your role.');return;}
+  if(!confirm('Stop pulling live NGX data for '+ticker+'? Its holding (if any) keeps its last price and can be edited by hand.'))return;
+  ngxWatchlist=(ngxWatchlist||[]).filter(w=>w.ticker!==ticker);
+  save();renderNgxMarket();
+}
+function ngxAddFromInput(){
+  if(!canUseNgx()){alert('Access denied — NGX Market is restricted for your role.');return;}
+  const el=document.getElementById('ngx-add-ticker');const t=(el.value||'').trim().toUpperCase();
+  if(!t){alert('Enter a ticker.');return;}
+  if(ngxFind(t)){alert(t+' is already tracked.');return;}
+  ngxAddTicker(t,'manual');el.value='';save();renderNgxMarket();
+  ngxRefresh({tickers:[t]});
+}
+function ngxTrack(ticker){ ngxAddTicker(ticker,'holdings');save();renderNgxMarket();ngxRefresh({tickers:[ticker]}); }
+
+/* Stocks → Transactions: on choosing a ticker that isn't tracked, ask whether to pull its data. */
+function onStxTickerSelected(val){
+  const box=document.getElementById('stx-ngx-prompt');if(!box)return;
+  const t=String(val||'').trim().toUpperCase();
+  box.style.display='none';box.innerHTML='';
+  if(!t||!canUseNgx()) return;
+  const w=ngxFind(t);
+  if(w){
+    if(w.price>0){ box.style.display='block';box.innerHTML=`<div class="hint" style="color:#3b6d11">&#9679; ${esc(t)} is tracked in NGX Market — last price ${fmt(w.price)}${w.lastUpdated?' ('+esc(ngxShortTime(w.lastUpdated))+')':''}.</div>`; }
+    return;
+  }
+  if(ngxDeclined.has(t)) return;
+  const co=stockCompanyName(t);
+  box.style.display='block';
+  box.innerHTML=`<div style="margin-top:10px;border:0.5px solid #b5d4f4;background:#e6f1fb;border-radius:10px;padding:10px 12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+    <div style="flex:1;min-width:200px;font-size:13px;color:#0c447c">Pull live NGX data for <strong>${esc(t)}</strong>${co?' — '+esc(co):''}? It will be added to Settings &rarr; NGX Market and its price will feed Holdings.</div>
+    <button class="btn-primary" onclick="ngxConfirmFromTxn('${jsArg(t)}',true)">Yes, pull data</button>
+    <button onclick="ngxConfirmFromTxn('${jsArg(t)}',false)">No</button></div>`;
+}
+function ngxConfirmFromTxn(ticker,yes){
+  const box=document.getElementById('stx-ngx-prompt');
+  if(!yes){ ngxDeclined.add(ticker); if(box){box.style.display='none';box.innerHTML='';} return; }
+  ngxAddTicker(ticker,'transaction');save();
+  if(box){box.style.display='block';box.innerHTML='<div class="hint">Adding '+esc(ticker)+' to NGX Market and pulling its price…</div>';}
+  ngxRefresh({tickers:[ticker]}).then(()=>{
+    const w=ngxFind(ticker);
+    if(!box) return;
+    if(w&&w.status==='ok') box.innerHTML=`<div class="hint" style="color:#3b6d11">&#10003; ${esc(ticker)} added to NGX Market — last price ${fmt(w.price)}${w.lastUpdated?' ('+esc(ngxShortTime(w.lastUpdated))+')':''}.</div>`;
+    else box.innerHTML=`<div class="hint" style="color:#633806">${esc(ticker)} added to NGX Market${w&&w.error?' — price not available yet ('+esc(w.error)+')':' — prices will load once a data provider is set up'}.</div>`;
+  });
+}
+async function ngxTestProviders(){
+  const msg=document.getElementById('ngx-provider-msg');
+  await loadNgxConfig();
+  const order=ngxProviderOrder();
+  if(!order.length){ if(msg) msg.innerHTML='<span style="color:#633806">No provider has a saved key yet — save one first.</span>'; return; }
+  const t=((ngxWatchlist||[])[0]||{}).ticker||'ZENITHBANK';
+  if(msg) msg.textContent='Testing with '+t+'…';
+  const out=[];
+  for(const k of order){
+    try{ const q=await ngxQuote(k,t); out.push('<span style="color:#3b6d11">'+esc(NGX_PROVIDERS[k].label)+': OK — '+esc(t)+' '+fmt(q.price||0)+'</span>'); }
+    catch(e){ out.push('<span style="color:#a32d2d">'+esc(NGX_PROVIDERS[k].label)+': '+esc(e.message)+(e.status?'':' (blocked or offline — the provider may not allow calls from a browser)')+'</span>'); }
+  }
+  if(msg) msg.innerHTML=out.join('<br>');
+}
+function renderNgxProviders(){
+  const wrap=document.getElementById('ngx-providers-wrap');if(!wrap)return;
+  const c=ngxConfig||{};const pv=c.providers||{};const admin=canManageNgx();
+  const primary=(Array.isArray(c.order)&&c.order[0])||'ngnmarket';
+  let h='';
+  Object.entries(NGX_PROVIDERS).forEach(([k,d])=>{
+    const p=pv[k]||{};const has=!!p.key;
+    const masked=has?('&bull;&bull;&bull;&bull;'+esc(String(p.key).slice(-4))):'not set';
+    h+=`<div class="row" style="align-items:flex-end">
+      <div class="f1"><label>${esc(d.label)} <span style="font-weight:400;color:#888780">— ${esc(d.note)}</span></label>
+        ${admin?`<input id="ngx-key-${k}" type="password" autocomplete="off" placeholder="${has?'Saved key '+masked.replace(/&bull;/g,'•')+' — leave blank to keep':'Paste API key'}"/>`:`<div style="font-size:13px;padding:6px 0">${has?'Key saved ('+masked+')':'No key'}</div>`}</div>
+      <div style="flex:0;white-space:nowrap;padding-bottom:8px"><label style="display:inline-flex;gap:6px;align-items:center;text-transform:none;letter-spacing:0"><input type="checkbox" id="ngx-en-${k}" ${p.enabled===false?'':'checked'} ${admin?'':'disabled'}/> Enabled</label></div>
+    </div>`;
+  });
+  h+=`<div class="row"><div class="f1"><label>Primary provider</label><select id="ngx-primary" ${admin?'':'disabled'}>${Object.entries(NGX_PROVIDERS).map(([k,d])=>`<option value="${k}" ${k===primary?'selected':''}>${esc(d.label)}</option>`).join('')}</select></div></div>`;
+  wrap.innerHTML=h;
+  const act=document.getElementById('ngx-provider-actions');
+  if(act) act.querySelector('.btn-primary').style.display=admin?'':'none';
+}
+function renderNgxMarket(){
+  const panel=document.getElementById('settings-ngx-market');if(!panel)return;
+  if(!ngxConfigLoaded&&fundNgxDoc()){ loadNgxConfig().then(()=>{renderNgxProviders();renderNgxStatus();}); }
+  renderNgxProviders();renderNgxStatus();
+  const wrap=document.getElementById('ngx-table-wrap');
+  const list=Array.isArray(ngxWatchlist)?ngxWatchlist:null;
+  if(!list){
+    const held=stockHoldings.filter(h=>(h.shares||0)>0.0001).map(h=>esc(h.ticker));
+    wrap.innerHTML=`<div class="empty">Not set up yet. The first refresh will track the companies currently held${held.length?' ('+held.join(', ')+')':''}.</div>`;
+  }else if(!list.length){
+    wrap.innerHTML='<div class="empty">No companies tracked. Add one below, or confirm the prompt when recording a stock transaction.</div>';
+  }else{
+    let h='<div style="overflow-x:auto"><table><thead><tr><th>Company</th><th class="num">Price</th><th class="num">Change</th><th class="num">Volume</th><th>Updated</th><th>Feed holdings</th><th style="width:44px"></th></tr></thead><tbody>';
+    [...list].sort((a,b)=>a.ticker.localeCompare(b.ticker)).forEach(w=>{
+      const held=stockHoldings.find(x=>x.ticker===w.ticker&&(x.shares||0)>0.0001);
+      const up=(w.changePct||0)>=0;
+      const chg=w.changePct!=null?`<span style="color:${up?'#3b6d11':'#a32d2d'}">${up?'+':''}${Number(w.changePct).toFixed(2)}%</span>${w.change!=null?`<div style="font-size:11px;color:#888780">${up?'+':''}${fmtN(w.change)}</div>`:''}`:'—';
+      const status=w.status==='error'?`<div style="font-size:11px;color:#a32d2d">&#9888; ${esc(w.error||'Failed')}</div>`:'';
+      const flag=w.flag?`<div style="font-size:11px;color:#633806">&#9888; ${esc(w.flag)}</div>`:'';
+      h+=`<tr>
+        <td><strong style="color:#0c447c">${esc(w.ticker)}</strong>${held?' <span class="tag tag-green" style="font-size:10px">held</span>':''}<div style="font-size:11px;color:#888780">${esc(w.name||'')}</div></td>
+        <td class="num">${w.price>0?fmt(w.price):'—'}${flag}</td>
+        <td class="num">${chg}</td>
+        <td class="num">${w.volume!=null?Number(w.volume).toLocaleString():'—'}</td>
+        <td style="font-size:12px">${w.lastUpdated?esc(ngxShortTime(w.lastUpdated)):'—'}${w.source?`<div style="font-size:11px;color:#888780">${esc((NGX_PROVIDERS[w.source]||{}).label||w.source)}</div>`:''}${status}</td>
+        <td><input type="checkbox" ${w.autoFeed===false?'':'checked'} onchange="ngxToggleFeed('${jsArg(w.ticker)}',this.checked)" title="Copy this price into Stocks → Holdings"/></td>
+        <td><button class="btn-danger" onclick="removeNgxTicker('${jsArg(w.ticker)}')" style="padding:3px 7px;font-size:11px" title="Stop tracking">&#128465;</button></td>
+      </tr>`;
+    });
+    wrap.innerHTML=h+'</tbody></table></div>';
+  }
+  const un=document.getElementById('ngx-untracked');
+  if(un){
+    const missing=list?stockHoldings.filter(h=>(h.shares||0)>0.0001&&!ngxFind(h.ticker)):[];
+    un.innerHTML=missing.length?`<div style="font-size:12px;color:#633806">Held but not tracked (manual price): ${missing.map(h=>`<strong>${esc(h.ticker)}</strong> <button style="padding:2px 8px;font-size:11px" onclick="ngxTrack('${jsArg(h.ticker)}')">Track</button>`).join(' &nbsp; ')}</div>`:'';
+  }
+}
+function renderNgxStatus(){
+  const el=document.getElementById('ngx-status');if(!el)return;
+  const parts=[];
+  if(ngxConfigLoaded&&!ngxProviderOrder().length) parts.push('<span style="color:#633806">&#9888; No data provider set up — '+(canManageNgx()?'add an API key under Data providers below.':'ask an Admin to add an API key.')+'</span>');
+  const newest=(ngxWatchlist||[]).reduce((m,w)=>Math.max(m,w.fetchedAt?Date.parse(w.fetchedAt)||0:0),0);
+  if(newest) parts.push('Last refreshed '+esc(ngxShortTime(new Date(newest).toISOString())));
+  if(ngxLastRun){
+    let r=ngxLastRun.ok+' updated';
+    if(ngxLastRun.failed) r+=', <span style="color:#a32d2d">'+ngxLastRun.failed+' failed</span>';
+    if(ngxLastRun.usedBackup) r+=', '+ngxLastRun.usedBackup+' from backup';
+    if(ngxLastRun.fed) r+=', '+ngxLastRun.fed+' holding price'+(ngxLastRun.fed===1?'':'s')+' updated';
+    parts.push(r);
+    if(ngxLastRun.callsRemaining!=null) parts.push('NGN Market calls left this cycle: '+Number(ngxLastRun.callsRemaining).toLocaleString());
+  }
+  el.innerHTML=parts.join(' &middot; ');
 }
 
 /* ══════════════════════════════════════════
