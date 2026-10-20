@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Like Minds Reimagined — v3.41.0</title>
+<title>Like Minds Reimagined — v3.41.2</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
@@ -301,8 +301,8 @@ tr:last-child td{border-bottom:none}
     <div id="portal-own-wrap">
       <div id="member-portal-content"></div>
       <div id="portal-projection-mount"></div>
-      <div id="portal-kyc-mount"></div>
     </div>
+    <div id="portal-kyc-wrap" style="display:none"><div id="portal-kyc-mount"></div></div>
     <div id="portal-fund-pages" class="portal-ro" style="display:none"></div>
   </div>
 </div>
@@ -2211,7 +2211,8 @@ async function loadKYCFromCloud(){
 /* v3.40.0 — copy each portal member's own KYC record to kycSelf/{uid} (or remove it when the member has
    no record or 'My KYC' is switched off for them). Only runs for users holding the KYC permission, once
    KYC has loaded. Writes only what changed since the last publish in this session. */
-async function publishMemberKycSelf(){
+async function publishMemberKycSelf(opts){
+  opts=opts||{};
   if(!canUseKYC()||!kycLoaded||!fundId||!fbDb) return;
   try{
     await ensureSignedIn();
@@ -2226,8 +2227,14 @@ async function publishMemberKycSelf(){
       else batch.delete(fundKycSelfDoc(u.uid));
       lastPublishedKycSelf[u.uid]=json;writes++;
     });
-    if(writes) await batch.commit();
-  }catch(e){ lastPublishedKycSelf={}; console.warn('Member KYC publish failed:',e.message); }
+    if(writes){ await batch.commit(); if(opts.afterSave) setStatus('KYC saved — the member\'s view-only copy is updated'); }
+  }catch(e){
+    lastPublishedKycSelf={}; console.warn('Member KYC publish failed:',e.message);
+    // v3.41.1 — make it visible: usually the kycSelf rule is missing from this Firebase project's rules
+    const why=(e&&e.code==='permission-denied')?'permission denied — check that the kycSelf rule is deployed to this Firebase project':(e.message||'unknown error');
+    setStatus('⚠ Members\' My KYC copy not updated: '+why);
+    if(opts.afterSave) alert('The KYC record was saved, but the member\'s view-only copy (My KYC) could not be updated: '+why+'.');
+  }
 }
 async function deleteMemberKycSelf(uid){
   const ref=fundKycSelfDoc(uid); if(!ref||!canUseKYC()) return;
@@ -2236,8 +2243,8 @@ async function deleteMemberKycSelf(uid){
 /* Member portal: read this member's own KYC copy (memory only — never written to the device). */
 async function fetchOwnKyc(uid){
   const ref=fundKycSelfDoc(uid); if(!ref) return null;
-  try{ await ensureSignedIn(); const snap=await ref.get(); return snap.exists?snap.data():null; }
-  catch(e){ console.warn('Own KYC fetch failed:',e.message); return null; }
+  try{ await ensureSignedIn(); const snap=await ref.get({source:'server'}); return snap.exists?snap.data():null; }
+  catch(e){ console.warn('Own KYC fetch failed:',e.message); return {error:(e&&e.code)||e.message||'error'}; }
 }
 function renderPortalKyc(){
   const mount=document.getElementById('portal-kyc-mount');if(!mount)return;
@@ -2245,6 +2252,10 @@ function renderPortalKyc(){
   if(portalKyc===undefined){
     mount.innerHTML='<div class="card"><div class="card-title">My KYC</div><div class="empty">Loading&hellip;</div></div>';
     fetchOwnKyc(currentUser.uid).then(d=>{portalKyc=d;renderPortalKyc();});
+    return;
+  }
+  if(portalKyc&&portalKyc.error){
+    mount.innerHTML=`<div class="card"><div class="card-title">My KYC <span style="font-weight:400;text-transform:none;letter-spacing:0;color:#888780;font-size:11px">&mdash; view only</span></div><div class="empty" style="color:#a32d2d">Your KYC details could not be loaded right now${portalKyc.error==='permission-denied'?' (access refused by the server)':' ('+esc(portalKyc.error)+')'}. Please try again later or contact the fund administrator.</div></div>`;
     return;
   }
   const r=(portalKyc&&portalKyc.record)||null;
@@ -2279,7 +2290,7 @@ async function saveKYCRecordCloud(name,rec){
     await ensureSignedIn();
     await ref.set({byMember:{[name]:rec},updatedAt:Date.now(),updatedBy:currentUser?currentUser.uid:null},{merge:true});
     setStatus('KYC saved to the cloud — '+new Date().toLocaleTimeString());
-    publishMemberKycSelf(); // v3.40.0
+    publishMemberKycSelf({afterSave:true}); // v3.40.0 (v3.41.1: reports failures)
     return true;
   }catch(e){ alert('The KYC record could not be saved to the cloud: '+e.message); return false; }
 }
@@ -3304,7 +3315,6 @@ function renderPortalOwn(){
   renderMemberDetail(name,'member-portal-content');
   if(getMemberPortalSettings().projection) mountProjection('portal-projection-mount',name);
   else{ const pm=document.getElementById('portal-projection-mount'); if(pm)pm.innerHTML=''; }
-  renderPortalKyc(); // v3.40.0
 }
 
 /* ══════════════════════════════════════════
@@ -3339,19 +3349,29 @@ function portalGrantedPages(){
   const mp=getMemberPortalSettings();
   return PORTAL_FUND_DEFS.filter(d=>mp[d.key]&&PORTAL_PAGE_SOURCES[d.key]);
 }
+function portalKycEnabled(){ return !!(currentUser&&getMemberPortalSettings().kyc); } // v3.41.2
 function renderPortalNav(){
   const nav=document.getElementById('portal-nav');if(!nav)return;
   const pages=portalGrantedPages();
-  if(!pages.length){nav.style.display='none';nav.innerHTML='';return;}
+  const kyc=portalKycEnabled();
+  if(!pages.length&&!kyc){nav.style.display='none';nav.innerHTML='';return;}
   nav.style.display='flex';
-  nav.innerHTML=[{key:'own',short:'My account'},...pages].map(p=>`<button type="button" class="${portalPage===p.key?'btn-primary':''}" onclick="showPortalPage('${p.key}')" style="font-size:12px;padding:6px 12px">${esc(p.short)}</button>`).join('');
+  nav.innerHTML=[{key:'own',short:'My account'},...(kyc?[{key:'kyc',short:'My KYC'}]:[]),...pages].map(p=>`<button type="button" class="${portalPage===p.key?'btn-primary':''}" onclick="showPortalPage('${p.key}')" style="font-size:12px;padding:6px 12px">${esc(p.short)}</button>`).join('');
 }
 function showPortalPage(key){
   const granted=portalGrantedPages();
-  if(key!=='own'&&!granted.some(d=>d.key===key)) key='own';
+  if(key==='kyc'&&!portalKycEnabled()) key='own';
+  if(key!=='own'&&key!=='kyc'&&!granted.some(d=>d.key===key)) key='own';
   portalPage=key;
   renderPortalNav();
   const own=document.getElementById('portal-own-wrap'),fp=document.getElementById('portal-fund-pages');
+  const kw=document.getElementById('portal-kyc-wrap');
+  if(kw) kw.style.display=key==='kyc'?'':'none';
+  if(key==='kyc'){ // v3.41.2 — My KYC on its own page
+    if(own)own.style.display='none';if(fp)fp.style.display='none';
+    renderPortalKyc();
+    return;
+  }
   if(key==='own'){
     applyStatementToGlobals(portalStatement);
     if(fp)fp.style.display='none';if(own)own.style.display='';
