@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Like Minds Reimagined — v3.41.2</title>
+<title>Like Minds Reimagined — v3.41.3</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
@@ -290,12 +290,19 @@ tr:last-child td{border-bottom:none}
       <button class="hbtn danger" onclick="logout()">Log out</button>
     </div>
   </div>
-  <div style="max-width:900px;margin:0 auto;padding:16px;width:100%">
+  <div id="portal-body" style="max-width:900px;margin:0 auto;padding:16px;width:100%">
     <style>
       /* v3.38.0 — fund pages inside the Member portal are strictly read-only */
       .portal-ro .btn-danger,.portal-ro .btn-lock,.portal-ro button[onclick^="edit"],.portal-ro button[onclick^="remove"]{display:none!important}
       .portal-ro tr[onclick]{pointer-events:none;cursor:default!important}
       #portal-nav{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
+      /* v3.41.3 — read-only fund pages: wider portal, tables sized to content and scrollable */
+      #portal-body.portal-wide{max-width:1200px!important}
+      .portal-ro .card{overflow-x:auto}
+      .portal-ro table{table-layout:auto;width:max-content;min-width:100%}
+      .portal-ro th,.portal-ro td{width:auto!important}
+      .portal-ro td:first-child,.portal-ro th:first-child{min-width:150px}
+      .portal-ro td:first-child{max-width:240px;white-space:normal}
     </style>
     <div id="portal-nav" style="display:none"></div>
     <div id="portal-own-wrap">
@@ -3367,6 +3374,8 @@ function showPortalPage(key){
   const own=document.getElementById('portal-own-wrap'),fp=document.getElementById('portal-fund-pages');
   const kw=document.getElementById('portal-kyc-wrap');
   if(kw) kw.style.display=key==='kyc'?'':'none';
+  const pb=document.getElementById('portal-body');
+  if(pb) pb.classList.toggle('portal-wide',key!=='own'&&key!=='kyc'); // v3.41.3
   if(key==='kyc'){ // v3.41.2 — My KYC on its own page
     if(own)own.style.display='none';if(fp)fp.style.display='none';
     renderPortalKyc();
